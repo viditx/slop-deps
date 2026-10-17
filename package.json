@@ -1,0 +1,38 @@
+{
+  "name": "slop-deps",
+  "version": "1.0.0",
+  "description": "Zero-dependency security scanner that catches AI-hallucinated and typosquatted dependencies before attackers weaponize them.",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "slop-deps": "bin/slop-deps.js"
+  },
+  "scripts": {
+    "test": "node bin/slop-deps.js --dir test"
+  },
+  "keywords": [
+    "ai",
+    "hallucination",
+    "security",
+    "supply-chain",
+    "dependencies",
+    "npm",
+    "pypi",
+    "scanner",
+    "linter",
+    "anti-slop"
+  ],
+  "author": "Vidit Patil <viditx>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/viditx/slop-deps.git"
+  },
+  "bugs": {
+    "url": "https://github.com/viditx/slop-deps/issues"
+  },
+  "homepage": "https://github.com/viditx/slop-deps#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
