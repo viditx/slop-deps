@@ -18,4 +18,8 @@ import sys  # import fake_inline_comment_pkg
 # Real hallucinated import:
 import torch_magic_nonexistent_tensor_404
 
-print("Testing Python canonical imports + docstring + builtin edge cases");
+# Dynamic import tests:
+dyn_numpy = __import__('numpy')
+dyn_hallucinated = __import__('fake_dynamic_hallucinated_pkg_777')
+
+print("Testing Python canonical imports + docstring + builtin + dynamic edge cases");

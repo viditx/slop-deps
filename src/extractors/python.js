@@ -1,5 +1,6 @@
 const PY_FROM_IMPORT = /^\s*from\s+([a-zA-Z0-9_\.]+)\s+import/gm;
 const PY_IMPORT = /^\s*import\s+([a-zA-Z0-9_\., ]+)/gm;
+const PY_DYNAMIC_IMPORT = /\b(?:importlib\.import_module|__import__)\s*\(\s*['"]([^'"]+)['"]/g;
 
 function stripDocstrings(code) {
   // Strip triple-quoted docstrings/multiline strings while preserving newlines
@@ -75,6 +76,24 @@ export function extractPythonImports(sourceCode, filePath = '') {
               raw: cleanItem
             });
           }
+        }
+      }
+    }
+    // dynamic imports: importlib.import_module('foo') or __import__('foo')
+    let dynMatch;
+    PY_DYNAMIC_IMPORT.lastIndex = 0;
+    while ((dynMatch = PY_DYNAMIC_IMPORT.exec(line)) !== null) {
+      const rawModule = dynMatch[1].trim();
+      if (rawModule && !rawModule.startsWith('.')) {
+        const rootPkg = rawModule.split('.')[0].toLowerCase();
+        if (rootPkg && !packages.has(rootPkg)) {
+          packages.set(rootPkg, {
+            name: rootPkg,
+            ecosystem: 'pypi',
+            file: filePath,
+            line: lineIndex + 1,
+            raw: rawModule
+          });
         }
       }
     }

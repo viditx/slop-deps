@@ -100,8 +100,8 @@ export async function scanDirectory(targetDir = process.cwd()) {
   // .py file or package directory means the import is local, not a PyPI dep.
   const localPyModules = new Set();
   for (const file of allFiles) {
-    if (file.toLowerCase().endsWith('.py')) {
-      localPyModules.add(path.basename(file).replace(/\.py$/i, '').toLowerCase());
+    if (file.toLowerCase().endsWith('.py') || file.toLowerCase().endsWith('.pyi')) {
+      localPyModules.add(path.basename(file).replace(/\.pyi?$/i, '').toLowerCase());
     }
   }
 
@@ -149,7 +149,7 @@ export async function scanDirectory(targetDir = process.cwd()) {
       continue;
     }
 
-    if (ext === '.py') {
+    if (ext === '.py' || ext === '.pyi') {
       try {
         const content = await fs.readFile(file, 'utf-8');
         const rel = path.relative(targetDir, file);

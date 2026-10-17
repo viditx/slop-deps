@@ -22,6 +22,20 @@ function cleanPackageName(specifier) {
     return null;
   }
 
+  // Handle Deno/Bun/Node 'npm:' specifier prefix: npm:pkg@^1.0.0 or npm:@org/pkg@^1.0.0
+  if (trimmed.startsWith('npm:')) {
+    trimmed = trimmed.slice(4).trim();
+    if (trimmed.startsWith('@')) {
+      const parts = trimmed.split('/');
+      if (parts.length >= 2) {
+        const pkgPart = parts[1].split('@')[0];
+        return `${parts[0]}/${pkgPart}`;
+      }
+    } else {
+      return trimmed.split('/')[0].split('@')[0];
+    }
+  }
+
   // URL / virtual-scheme imports (https:, http:, data:, bun:, jsr:, astro:, etc.) are not registry packages
   if (/^[a-zA-Z][\w+.-]*:/.test(trimmed) && !trimmed.startsWith('node:')) {
     return null;
@@ -42,6 +56,18 @@ function cleanPackageName(specifier) {
 
 const PH_START = '\uE000';
 const PH_END = '\uE001';
+
+function isRegexStart(code, i) {
+  let j = i - 1;
+  while (j >= 0 && /\s/.test(code[j])) j--;
+  if (j < 0) return true;
+  const prev = code[j];
+  if (/[=,;:(\[{!&|?+\-*%^~<>]/.test(prev)) return true;
+  let wordEnd = j;
+  while (j >= 0 && /[a-zA-Z0-9_$]/.test(code[j])) j--;
+  const word = code.slice(j + 1, wordEnd + 1);
+  return /^(?:return|case|throw|yield|await|typeof|void|delete|instanceof|in|of)$/.test(word);
+}
 
 // Mask string literal contents so import patterns never see text inside
 // strings ("const s = \"import x from 'y'\"") while keeping quoted specifiers
@@ -86,6 +112,36 @@ function maskStrings(code) {
       continue;
     }
 
+    // Handle regex literals so quotes inside regex character classes (e.g. /['"]/) never trigger string mode
+    if (ch === '/' && isRegexStart(code, i)) {
+      out += ch;
+      i++;
+      let inClass = false;
+      while (i < code.length) {
+        const rCh = code[i];
+        if (rCh === '\\') {
+          out += code.slice(i, i + 2);
+          i += 2;
+          continue;
+        }
+        if (rCh === '\n') break;
+        if (rCh === '[') inClass = true;
+        else if (rCh === ']' && inClass) inClass = false;
+        else if (rCh === '/' && !inClass) {
+          out += rCh;
+          i++;
+          while (i < code.length && /[a-z]/i.test(code[i])) {
+            out += code[i];
+            i++;
+          }
+          break;
+        }
+        out += rCh;
+        i++;
+      }
+      continue;
+    }
+
     if (ch === '"' || ch === "'" || ch === '`') {
       str = ch;
       strings.push('');
@@ -111,10 +167,10 @@ const PATTERNS = [
   /(?:^|[;\s}])(?:import|export)\s+(?:type\s+)?(?:\*\s*(?:as\s+[\w$]+)?|[\w$]+(?:\s*,\s*(?:\{[^{}]*\}|\*\s*as\s+[\w$]+))?|\{[^{}]*\})\s*from\s*['"]([^'"]+)['"]/g,
   // side-effect import: import 'pkg'
   /(?:^|[;\s])import\s*['"]([^'"]+)['"]/g,
-  // require('pkg') in any expression position
-  /(?:^|[^\w.$])require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  // dynamic import: import('pkg')
-  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+  // require('pkg') and require.resolve('pkg') in any expression position
+  /(?:^|[^\w.$])require(?:\.resolve)?\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  // dynamic import: import('pkg') and import.meta.resolve('pkg')
+  /\bimport(?:\.meta\.resolve)?\s*\(\s*['"]([^'"]+)['"]\s*\)/g
 ];
 
 export function extractJsImports(sourceCode, filePath = '') {
