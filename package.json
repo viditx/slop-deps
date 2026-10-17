@@ -22,8 +22,14 @@
     "linter",
     "anti-slop"
   ],
-  "author": "Vidit Patil <viditx>",
+  "author": "Vidit Patil <viditx@users.noreply.github.com>",
   "license": "MIT",
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "package.json"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/viditx/slop-deps.git"

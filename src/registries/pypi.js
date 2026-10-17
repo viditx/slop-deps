@@ -1,9 +1,13 @@
+import { resolvePyPiDistributionName } from '../pypi-map.js';
+
 const CACHE = new Map();
 
-export async function checkPyPiPackage(pkgName) {
-  if (CACHE.has(pkgName)) return CACHE.get(pkgName);
+export async function checkPyPiPackage(pkgName, isManifest = false) {
+  const distName = resolvePyPiDistributionName(pkgName);
+  const cacheKey = `${distName}:${isManifest}`;
+  if (CACHE.has(cacheKey)) return CACHE.get(cacheKey);
 
-  const url = `https://pypi.org/pypi/${encodeURIComponent(pkgName)}/json`;
+  const url = `https://pypi.org/pypi/${encodeURIComponent(distName)}/json`;
 
   try {
     const controller = new AbortController();
@@ -13,15 +17,21 @@ export async function checkPyPiPackage(pkgName) {
     clearTimeout(timeout);
 
     if (res.status === 404) {
+      // If declared in requirements.txt or mapped canonically, 404 is CRITICAL.
+      // If raw import in .py code, it could be an unmapped sub-package or internal module.
+      const isCritical = isManifest || distName !== pkgName;
       const result = {
         name: pkgName,
+        resolvedDist: distName,
         ecosystem: 'pypi',
-        status: 'HALLUCINATED',
-        risk: 'CRITICAL',
+        status: isCritical ? 'HALLUCINATED' : 'UNRESOLVED_IMPORT',
+        risk: isCritical ? 'CRITICAL' : 'WARN',
         exists: false,
-        message: 'Package DOES NOT EXIST on PyPI. Potential AI hallucination trap!'
+        message: isCritical
+          ? `Package '${distName}' DOES NOT EXIST on PyPI. Potential AI hallucination trap!`
+          : `Import '${pkgName}' unresolved on PyPI. Verify if this belongs to a multi-package distribution.`
       };
-      CACHE.set(pkgName, result);
+      CACHE.set(cacheKey, result);
       return result;
     }
 

@@ -16,12 +16,14 @@ USAGE:
 OPTIONS:
   -d, --dir <path>    Specify directory to scan (default: current working directory)
   --json              Output findings as raw JSON (ideal for CI/CD pipelines)
+  --strict            Exit with code 2 if network errors or unresolved warnings occur
   -v, --version       Display version number
   -h, --help          Display this help message
 
 EXIT CODES:
   0   All dependencies verified or clean
   1   Critical hallucinated packages detected (fails CI/CD or pre-commit)
+  2   Target directory not found or network verification incomplete
 `);
   process.exit(0);
 }
@@ -32,6 +34,7 @@ if (args.includes('--version') || args.includes('-v')) {
 }
 
 const isJson = args.includes('--json');
+const isStrict = args.includes('--strict');
 let targetDir = process.cwd();
 
 const dirIdx = args.findIndex(a => a === '--dir' || a === '-d');
@@ -45,16 +48,33 @@ async function run() {
     process.stdout.write(`  Scanning directory: ${targetDir} ...\r`);
   }
 
-  const { findings, stats } = await scanDirectory(targetDir);
+  let result;
+  try {
+    result = await scanDirectory(targetDir);
+  } catch (err) {
+    if (!isJson) {
+      process.stdout.write('\x1b[2K\r');
+      console.error(`\x1b[31m\x1b[1m✖ ERROR:\x1b[0m ${err.message}\n`);
+    } else {
+      console.error(JSON.stringify({ error: err.message, code: err.code }));
+    }
+    process.exit(2);
+  }
+
+  const { findings, stats } = result;
 
   if (isJson) {
     console.log(JSON.stringify({ findings, stats }, null, 2));
   } else {
+    // Clear scanning status line cleanly
+    process.stdout.write('\x1b[2K\r');
     printResults(findings, stats);
   }
 
   if (stats.critical > 0) {
     process.exit(1);
+  } else if (isStrict && stats.warn > 0) {
+    process.exit(2);
   } else {
     process.exit(0);
   }
@@ -62,5 +82,5 @@ async function run() {
 
 run().catch(err => {
   console.error('\x1b[31mFatal error during scan:\x1b[0m', err.message);
-  process.exit(1);
+  process.exit(2);
 });

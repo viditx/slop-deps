@@ -13,13 +13,25 @@ const IGNORED_DIRS = new Set([
   '.idea', '.vscode'
 ]);
 
-async function getFilesRecursively(dir, fileList = []) {
-  let entries;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return fileList;
+// Lightweight concurrent pool (zero external dependencies)
+async function mapConcurrent(items, limit, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i], i);
+    }
   }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+async function getFilesRecursively(dir, fileList = []) {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (IGNORED_DIRS.has(entry.name)) continue;
@@ -36,6 +48,23 @@ async function getFilesRecursively(dir, fileList = []) {
 }
 
 export async function scanDirectory(targetDir = process.cwd(), options = {}) {
+  // Fail-closed: Ensure root directory actually exists!
+  try {
+    const stat = await fs.stat(targetDir);
+    if (!stat.isDirectory()) {
+      const err = new Error(`Target path is not a directory: ${targetDir}`);
+      err.code = 'ENOTDIR';
+      throw err;
+    }
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      const missingErr = new Error(`Target directory does not exist: ${targetDir}`);
+      missingErr.code = 'ENOENT';
+      throw missingErr;
+    }
+    throw err;
+  }
+
   const allFiles = await getFilesRecursively(targetDir);
   const packageReferences = [];
 
@@ -48,7 +77,9 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
       try {
         const content = await fs.readFile(file, 'utf-8');
         const rel = path.relative(targetDir, file);
-        packageReferences.push(...extractPackageJson(content, rel));
+        const extracted = extractPackageJson(content, rel);
+        extracted.forEach(p => p.isManifest = true);
+        packageReferences.push(...extracted);
       } catch {}
       continue;
     }
@@ -57,7 +88,9 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
       try {
         const content = await fs.readFile(file, 'utf-8');
         const rel = path.relative(targetDir, file);
-        packageReferences.push(...extractRequirementsTxt(content, rel));
+        const extracted = extractRequirementsTxt(content, rel);
+        extracted.forEach(p => p.isManifest = true);
+        packageReferences.push(...extracted);
       } catch {}
       continue;
     }
@@ -89,25 +122,29 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
     const key = `${ref.ecosystem}:${ref.name.toLowerCase()}`;
     if (!uniqueTargets.has(key)) {
       uniqueTargets.set(key, ref);
+    } else {
+      // If any reference is from a manifest, prioritize isManifest flag
+      if (ref.isManifest) {
+        uniqueTargets.get(key).isManifest = true;
+      }
     }
   }
 
-  // Concurrently verify against registries
   const targets = Array.from(uniqueTargets.values());
-  const findings = await Promise.all(
-    targets.map(async (target) => {
-      let check;
-      if (target.ecosystem === 'npm') {
-        check = await checkNpmPackage(target.name);
-      } else {
-        check = await checkPyPiPackage(target.name);
-      }
-      return {
-        ...target,
-        ...check
-      };
-    })
-  );
+
+  // Concurrently verify with a worker pool of 8 to avoid HTTP 429 rate limiting
+  const findings = await mapConcurrent(targets, 8, async (target) => {
+    let check;
+    if (target.ecosystem === 'npm') {
+      check = await checkNpmPackage(target.name);
+    } else {
+      check = await checkPyPiPackage(target.name, Boolean(target.isManifest));
+    }
+    return {
+      ...target,
+      ...check
+    };
+  });
 
   return {
     findings,
@@ -115,6 +152,7 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
       total: findings.length,
       critical: findings.filter(f => f.risk === 'CRITICAL').length,
       suspicious: findings.filter(f => f.risk === 'HIGH').length,
+      warn: findings.filter(f => f.risk === 'WARN').length,
       clean: findings.filter(f => f.risk === 'CLEAN').length
     }
   };
