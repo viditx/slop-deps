@@ -30,7 +30,7 @@ async function mapConcurrent(items, limit, fn) {
   return results;
 }
 
-async function getFilesRecursively(dir, fileList = [], dirNames = null) {
+async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir = dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -38,14 +38,40 @@ async function getFilesRecursively(dir, fileList = [], dirNames = null) {
     const fullPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      if (dirNames) dirNames.add(entry.name);
-      await getFilesRecursively(fullPath, fileList, dirNames);
+      if (dirNames) {
+        dirNames.add(entry.name.toLowerCase());
+        const rel = path.relative(rootDir, fullPath).replace(/\\/g, '/').toLowerCase();
+        dirNames.add(rel);
+      }
+      await getFilesRecursively(fullPath, fileList, dirNames, rootDir);
     } else if (entry.isFile()) {
       fileList.push(fullPath);
     }
   }
 
   return fileList;
+}
+
+async function loadPathAliases(targetDir) {
+  const aliases = new Set();
+  const configs = ['tsconfig.json', 'jsconfig.json', 'tsconfig.base.json', 'tsconfig.app.json'];
+
+  for (const cfg of configs) {
+    try {
+      const fullPath = path.join(targetDir, cfg);
+      const raw = await fs.readFile(fullPath, 'utf-8');
+      const cleanJson = raw.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '$1');
+      const parsed = JSON.parse(cleanJson);
+      const paths = parsed.compilerOptions?.paths;
+      if (paths && typeof paths === 'object') {
+        for (const aliasKey of Object.keys(paths)) {
+          const cleanKey = aliasKey.replace(/\*$/, '').replace(/\/$/, '').trim();
+          if (cleanKey) aliases.add(cleanKey.toLowerCase());
+        }
+      }
+    } catch {}
+  }
+  return aliases;
 }
 
 export async function scanDirectory(targetDir = process.cwd()) {
@@ -67,7 +93,8 @@ export async function scanDirectory(targetDir = process.cwd()) {
   }
 
   const dirNames = new Set();
-  const allFiles = await getFilesRecursively(targetDir, [], dirNames);
+  const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir);
+  const pathAliases = await loadPathAliases(targetDir);
 
   // Python resolves imports against the local tree first: a same-named
   // .py file or package directory means the import is local, not a PyPI dep.
@@ -136,7 +163,34 @@ export async function scanDirectory(targetDir = process.cwd()) {
   const uniqueTargets = new Map();
   for (const ref of packageReferences) {
     if (isBuiltin(ref.name, ref.ecosystem)) continue;
-    if (ref.ecosystem === 'pypi' && (localPyModules.has(ref.name) || dirNames.has(ref.name))) continue;
+
+    // Python local tree check
+    if (ref.ecosystem === 'pypi') {
+      const lower = ref.name.toLowerCase();
+      if (localPyModules.has(lower) || dirNames.has(lower)) continue;
+    }
+
+    // JS/TS local path alias & local folder checks
+    if (ref.ecosystem === 'npm') {
+      const lowerName = ref.name.toLowerCase();
+      let isAlias = false;
+      for (const alias of pathAliases) {
+        if (lowerName === alias || lowerName.startsWith(alias + '/')) {
+          isAlias = true;
+          break;
+        }
+      }
+      if (isAlias) continue;
+
+      // Handle @folder alias convention when folder exists locally on disk
+      if (ref.name.startsWith('@')) {
+        const scopeFolder = ref.name.slice(1).split('/')[0].toLowerCase();
+        if (dirNames.has(scopeFolder) || dirNames.has(`src/${scopeFolder}`)) {
+          continue;
+        }
+      }
+    }
+
     const key = `${ref.ecosystem}:${ref.name.toLowerCase()}`;
     if (!uniqueTargets.has(key)) {
       uniqueTargets.set(key, ref);

@@ -39,7 +39,12 @@ async function run() {
   assert.ok(!allNames.has('https'), 'HTTPS URL must not be extracted as package');
   assert.ok(!allNames.has('fake_docstring_package_xyz'), 'Docstring imports must be ignored');
   assert.ok(!allNames.has('fake_inline_comment_pkg'), 'Inline comment imports must be ignored');
-  console.log('  ✔ PASS: Workspaces, URLs, docstrings, and comments successfully ignored\n');
+  assert.ok(!allNames.has('$app'), 'SvelteKit $app must be ignored');
+  assert.ok(!allNames.has('$lib'), 'SvelteKit $lib must be ignored');
+  assert.ok(!allNames.has('@components/Header'), 'TypeScript path alias @components/Header must be ignored');
+  assert.ok(!allNames.has('@utils/format'), 'TypeScript path alias @utils/format must be ignored');
+  assert.ok(!allNames.has('lodash?raw'), 'Vite query parameter ?raw must be stripped to base package');
+  console.log('  ✔ PASS: Workspaces, URLs, query params, tsconfig aliases, docstrings, and comments successfully ignored\n');
 
   console.log('🎉 All test assertions passed successfully!');
 }

@@ -1,6 +1,14 @@
 function cleanPackageName(specifier) {
   if (!specifier) return null;
-  const trimmed = specifier.trim();
+  let trimmed = specifier.trim();
+
+  // Strip query parameters and hash fragments (e.g. 'three?raw', 'pkg?worker', 'file.wasm?init')
+  const qIdx = trimmed.search(/[?#]/);
+  if (qIdx !== -1) {
+    trimmed = trimmed.slice(0, qIdx).trim();
+  }
+
+  if (!trimmed) return null;
 
   // Ignore relative and path aliases
   if (
@@ -8,12 +16,13 @@ function cleanPackageName(specifier) {
     trimmed.startsWith('/') ||
     trimmed.startsWith('~') ||
     trimmed.startsWith('#') ||
-    trimmed.startsWith('@/')
+    trimmed.startsWith('@/') ||
+    trimmed.startsWith('$')    // SvelteKit $app, $lib, $env
   ) {
     return null;
   }
 
-  // URL / virtual-scheme imports (https:, http:, data:, bun:, jsr:...) are not registry packages
+  // URL / virtual-scheme imports (https:, http:, data:, bun:, jsr:, astro:, etc.) are not registry packages
   if (/^[a-zA-Z][\w+.-]*:/.test(trimmed) && !trimmed.startsWith('node:')) {
     return null;
   }
