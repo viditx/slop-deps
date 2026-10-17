@@ -13,6 +13,11 @@ function cleanPackageName(specifier) {
     return null;
   }
 
+  // URL / virtual-scheme imports (https:, http:, data:, bun:, jsr:...) are not registry packages
+  if (/^[a-zA-Z][\w+.-]*:/.test(trimmed) && !trimmed.startsWith('node:')) {
+    return null;
+  }
+
   // Handle scoped packages: @org/pkg/sub -> @org/pkg
   if (trimmed.startsWith('@')) {
     const parts = trimmed.split('/');
@@ -26,57 +31,101 @@ function cleanPackageName(specifier) {
   return trimmed.split('/')[0];
 }
 
-export function extractJsImports(sourceCode, filePath = '') {
-  const packages = new Map();
+const PH_START = '\uE000';
+const PH_END = '\uE001';
 
-  // 1. Strip block comments /* ... */ while preserving newlines
-  const codeWithoutBlockComments = sourceCode.replace(/\/\*[\s\S]*?\*\//g, (match) => {
-    return '\n'.repeat((match.match(/\n/g) || []).length);
-  });
+// Mask string literal contents so import patterns never see text inside
+// strings ("const s = \"import x from 'y'\"") while keeping quoted specifiers
+// recoverable via placeholders. Newlines inside strings are re-emitted after
+// the placeholder so line numbers of following code stay accurate.
+function maskStrings(code) {
+  const strings = [];
+  let out = '';
+  let i = 0;
+  let str = null;
 
-  const lines = codeWithoutBlockComments.split('\n');
+  while (i < code.length) {
+    const ch = code[i];
 
-  // Regex patterns targeting actual statements, not string literals
-  const PATTERNS = [
-    // import / export ... from 'pkg' (including export * from 'pkg')
-    /^\s*(?:import|export)\s+(?:type\s+)?(?:\*\s*(?:as\s+\w+)?|\{[^}]*\}|[\w\s,]+)?\s*from\s*['"]([^'"]+)['"]/gm,
-    // side-effect import: import 'pkg'
-    /^\s*import\s*['"]([^'"]+)['"]/gm,
-    // export { ... } from 'pkg'
-    /^\s*export\s*\{[^}]*\}\s*from\s*['"]([^'"]+)['"]/gm,
-    // require('pkg')
-    /(?:const|let|var)\s+(?:[\w\s{},:*]+)\s*=\s*require\(\s*['"]([^'"]+)['"]\s*\)/g,
-    // dynamic import: import('pkg')
-    /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
-  ];
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    let line = lines[lineIndex];
-
-    // Strip single line comments
-    const commentIdx = line.indexOf('//');
-    if (commentIdx !== -1) {
-      line = line.slice(0, commentIdx);
+    if (str) {
+      if (ch === '\\') {
+        strings[strings.length - 1] += ch + (code[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (ch === str) {
+        out += '\n'.repeat((strings[strings.length - 1].match(/\n/g) || []).length) + ch;
+        str = null;
+        i++;
+        continue;
+      }
+      strings[strings.length - 1] += ch;
+      i++;
+      continue;
     }
 
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (ch === '/' && code[i + 1] === '/') {
+      while (i < code.length && code[i] !== '\n') i++;
+      continue;
+    }
 
-    for (const regex of PATTERNS) {
-      regex.lastIndex = 0;
-      let match;
-      while ((match = regex.exec(line)) !== null) {
-        const rawSpecifier = match[1];
-        const pkg = cleanPackageName(rawSpecifier);
-        if (pkg && !packages.has(pkg)) {
-          packages.set(pkg, {
-            name: pkg,
-            ecosystem: 'npm',
-            file: filePath,
-            line: lineIndex + 1,
-            raw: rawSpecifier
-          });
-        }
+    if (ch === '/' && code[i + 1] === '*') {
+      const end = code.indexOf('*/', i + 2);
+      const stop = end === -1 ? code.length : end + 2;
+      out += '\n'.repeat((code.slice(i, stop).match(/\n/g) || []).length);
+      i = stop;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      str = ch;
+      strings.push('');
+      out += ch + PH_START + (strings.length - 1) + PH_END;
+      i++;
+      continue;
+    }
+
+    out += ch;
+    i++;
+  }
+
+  return { masked: out, strings };
+}
+
+function unmask(text, strings) {
+  return text.replace(new RegExp(PH_START + '(\\d+)' + PH_END, 'g'), (_, i) => strings[+i] ?? '');
+}
+
+// Patterns run over the whole masked file, so multi-line statements match.
+const PATTERNS = [
+  // import/export ... from 'pkg' (default, named, mixed, namespace, type)
+  /(?:^|[;\s}])(?:import|export)\s+(?:type\s+)?(?:\*\s*(?:as\s+[\w$]+)?|[\w$]+(?:\s*,\s*(?:\{[^{}]*\}|\*\s*as\s+[\w$]+))?|\{[^{}]*\})\s*from\s*['"]([^'"]+)['"]/g,
+  // side-effect import: import 'pkg'
+  /(?:^|[;\s])import\s*['"]([^'"]+)['"]/g,
+  // require('pkg') in any expression position
+  /(?:^|[^\w.$])require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  // dynamic import: import('pkg')
+  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+];
+
+export function extractJsImports(sourceCode, filePath = '') {
+  const packages = new Map();
+  const { masked, strings } = maskStrings(sourceCode);
+
+  for (const regex of PATTERNS) {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(masked)) !== null) {
+      const spec = unmask(match[1], strings).trim();
+      const pkg = cleanPackageName(spec);
+      if (pkg && !packages.has(pkg)) {
+        packages.set(pkg, {
+          name: pkg,
+          ecosystem: 'npm',
+          file: filePath,
+          line: masked.slice(0, match.index).split('\n').length,
+          raw: spec
+        });
       }
     }
   }

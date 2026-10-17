@@ -1,4 +1,5 @@
-// Mapping of common Python top-level import names to their canonical PyPI distribution names
+// Mapping of common Python top-level import names to their canonical PyPI distribution names.
+// Only real import≠dist mismatches belong here — PyPI normalizes case on its own.
 export const PYPI_IMPORT_TO_DIST = new Map([
   ['pil', 'Pillow'],
   ['yaml', 'PyYAML'],
@@ -22,7 +23,6 @@ export const PYPI_IMPORT_TO_DIST = new Map([
   ['pptx', 'python-pptx'],
   ['jose', 'python-jose'],
   ['dns', 'dnspython'],
-  ['soundfile', 'PySoundFile'],
   ['usb', 'pyusb'],
   ['win32api', 'pywin32'],
   ['win32con', 'pywin32'],
@@ -33,19 +33,7 @@ export const PYPI_IMPORT_TO_DIST = new Map([
   ['multipart', 'python-multipart'],
   ['levenshtein', 'Levenshtein'],
   ['psycopg2', 'psycopg2-binary'],
-  ['google', 'protobuf'],
   ['pydantic_core', 'pydantic-core'],
-  ['sqlalchemy', 'SQLAlchemy'],
-  ['alembic', 'alembic'],
-  ['jinja2', 'Jinja2'],
-  ['werkzeug', 'Werkzeug'],
-  ['markupsafe', 'MarkupSafe'],
-  ['starlette', 'starlette'],
-  ['uvloop', 'uvloop'],
-  ['watchfiles', 'watchfiles'],
-  ['rich', 'rich'],
-  ['typer', 'typer'],
-  ['click', 'click'],
   ['grpc', 'grpcio']
 ]);
 

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { extractJsImports } from './extractors/js-ts.js';
 import { extractPythonImports } from './extractors/python.js';
-import { extractPackageJson, extractRequirementsTxt } from './extractors/manifests.js';
+import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml } from './extractors/manifests.js';
 import { isBuiltin } from './builtins.js';
 import { checkNpmPackage } from './registries/npm.js';
 import { checkPyPiPackage } from './registries/pypi.js';
@@ -30,7 +30,7 @@ async function mapConcurrent(items, limit, fn) {
   return results;
 }
 
-async function getFilesRecursively(dir, fileList = []) {
+async function getFilesRecursively(dir, fileList = [], dirNames = null) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -38,7 +38,8 @@ async function getFilesRecursively(dir, fileList = []) {
     const fullPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      await getFilesRecursively(fullPath, fileList);
+      if (dirNames) dirNames.add(entry.name);
+      await getFilesRecursively(fullPath, fileList, dirNames);
     } else if (entry.isFile()) {
       fileList.push(fullPath);
     }
@@ -47,7 +48,7 @@ async function getFilesRecursively(dir, fileList = []) {
   return fileList;
 }
 
-export async function scanDirectory(targetDir = process.cwd(), options = {}) {
+export async function scanDirectory(targetDir = process.cwd()) {
   // Fail-closed: Ensure root directory actually exists!
   try {
     const stat = await fs.stat(targetDir);
@@ -65,7 +66,18 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
     throw err;
   }
 
-  const allFiles = await getFilesRecursively(targetDir);
+  const dirNames = new Set();
+  const allFiles = await getFilesRecursively(targetDir, [], dirNames);
+
+  // Python resolves imports against the local tree first: a same-named
+  // .py file or package directory means the import is local, not a PyPI dep.
+  const localPyModules = new Set();
+  for (const file of allFiles) {
+    if (file.toLowerCase().endsWith('.py')) {
+      localPyModules.add(path.basename(file).replace(/\.py$/i, '').toLowerCase());
+    }
+  }
+
   const packageReferences = [];
 
   for (const file of allFiles) {
@@ -77,20 +89,25 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
       try {
         const content = await fs.readFile(file, 'utf-8');
         const rel = path.relative(targetDir, file);
-        const extracted = extractPackageJson(content, rel);
-        extracted.forEach(p => p.isManifest = true);
-        packageReferences.push(...extracted);
+        packageReferences.push(...extractPackageJson(content, rel));
       } catch {}
       continue;
     }
 
-    if (basename === 'requirements.txt') {
+    if (basename.endsWith('.txt') && (basename.includes('requirements') || basename.includes('reqs'))) {
       try {
         const content = await fs.readFile(file, 'utf-8');
         const rel = path.relative(targetDir, file);
-        const extracted = extractRequirementsTxt(content, rel);
-        extracted.forEach(p => p.isManifest = true);
-        packageReferences.push(...extracted);
+        packageReferences.push(...extractRequirementsTxt(content, rel));
+      } catch {}
+      continue;
+    }
+
+    if (basename === 'pyproject.toml') {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractPyProjectToml(content, rel));
       } catch {}
       continue;
     }
@@ -115,18 +132,14 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
     }
   }
 
-  // Filter builtins and group by package key (ecosystem:name)
+  // Filter builtins/local modules and group by package key (ecosystem:name)
   const uniqueTargets = new Map();
   for (const ref of packageReferences) {
     if (isBuiltin(ref.name, ref.ecosystem)) continue;
+    if (ref.ecosystem === 'pypi' && (localPyModules.has(ref.name) || dirNames.has(ref.name))) continue;
     const key = `${ref.ecosystem}:${ref.name.toLowerCase()}`;
     if (!uniqueTargets.has(key)) {
       uniqueTargets.set(key, ref);
-    } else {
-      // If any reference is from a manifest, prioritize isManifest flag
-      if (ref.isManifest) {
-        uniqueTargets.get(key).isManifest = true;
-      }
     }
   }
 
@@ -138,7 +151,7 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
     if (target.ecosystem === 'npm') {
       check = await checkNpmPackage(target.name);
     } else {
-      check = await checkPyPiPackage(target.name, Boolean(target.isManifest));
+      check = await checkPyPiPackage(target.name);
     }
     return {
       ...target,

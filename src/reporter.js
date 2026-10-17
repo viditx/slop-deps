@@ -1,18 +1,21 @@
-const c = {
+const RAW = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
   dim: '\x1b[2m',
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[37m',
   bgRed: '\x1b[41m',
   bgGreen: '\x1b[42m',
   bgYellow: '\x1b[43m'
 };
+
+const isColorSupported = Boolean((process.stdout.isTTY || process.env.CI) && !process.env.NO_COLOR);
+const c = isColorSupported
+  ? RAW
+  : Object.fromEntries(Object.keys(RAW).map(k => [k, '']));
 
 export function printBanner() {
   console.log(`
@@ -66,6 +69,18 @@ export function printResults(findings, stats) {
     }
   }
 
+  // Print network / unresolved warnings so they are never silently swallowed
+  if (warn.length > 0) {
+    console.log(`  ${c.bgYellow}${c.white}${c.bold} ⚠ WARNINGS: UNRESOLVED / NETWORK ${c.reset}`);
+    console.log(`  ${c.yellow}Could not be fully verified. Inspect before trusting the result.${c.reset}\n`);
+
+    for (const item of warn) {
+      console.log(`    • ${c.bold}${c.yellow}${item.name}${c.reset} ${c.dim}[${item.ecosystem}]${c.reset}`);
+      console.log(`      ${c.dim}Location:${c.reset} ${item.file}${item.line ? `:${item.line}` : ''}`);
+      console.log(`      ${c.dim}Detail:${c.reset}   ${item.message}\n`);
+    }
+  }
+
   // Summary box
   console.log(`${c.dim}───────────────────────────────────────────────────────────────────────────────${c.reset}`);
   console.log(`  ${c.bold}Total Inspected:${c.reset} ${stats.total}`);
@@ -81,6 +96,8 @@ export function printResults(findings, stats) {
     console.log(`  ${c.bgRed}${c.white}${c.bold} ✖ SECURITY CHECK FAILED ${c.reset} ${c.red}Fix hallucinated packages before pushing!${c.reset}\n`);
   } else if (high.length > 0) {
     console.log(`  ${c.bgYellow}${c.white}${c.bold} ⚠ PASSED WITH WARNINGS ${c.reset} ${c.yellow}Check newly registered dependencies.${c.reset}\n`);
+  } else if (warn.length > 0) {
+    console.log(`  ${c.bgYellow}${c.white}${c.bold} ⚠ PASSED WITH WARNINGS ${c.reset} ${c.yellow}Unresolved imports or network errors — rerun with --strict to fail on these.${c.reset}\n`);
   } else {
     console.log(`  ${c.bgGreen}${c.white}${c.bold} ✔ ALL DEPENDENCIES VERIFIED ${c.reset} ${c.green}Zero hallucinated packages detected.${c.reset}\n`);
   }

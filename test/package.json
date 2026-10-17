@@ -1,0 +1,15 @@
+{
+  "name": "test-app",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "react": "^19.0.0",
+    "express": "^4.18.2",
+    "internal-ui": "workspace:*",
+    "local-helper": "file:./local",
+    "my-lodash": "npm:lodash@^4.17.21"
+  },
+  "devDependencies": {
+    "fake-dev-hallucinated-xyz-999": "^1.0.0"
+  }
+}

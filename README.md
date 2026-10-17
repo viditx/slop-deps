@@ -61,7 +61,6 @@ Neither package exists on npm. **Here is how attackers exploit this:**
 | :--- | :--- | :--- |
 | 🔴 **HALLUCINATED** | **CRITICAL** | Package **DOES NOT EXIST** on npm / PyPI. An attacker can register it anytime. |
 | 🟡 **SUSPICIOUS** | **HIGH** | Package was created in the last 30 days with minimal releases. High risk of newly registered lure. |
-| 🟡 **UNRESOLVED** | **WARN** | Python import does not match canonical PyPI distribution name. |
 | 🟢 **VERIFIED** | **CLEAN** | Established package with legitimate release history. |
 
 ---
@@ -69,9 +68,10 @@ Neither package exists on npm. **Here is how attackers exploit this:**
 ## 🚀 Key Features
 
 * ⚡ **Zero Runtime Dependencies:** Built strictly on native Node.js 18+ APIs (`fetch`, `fs/promises`). No bloat, no 50-package dependency trees.
-* 🌐 **Multi-Ecosystem:** Scans JavaScript, TypeScript, React (JSX/TSX), Python (`.py`), and manifests (`package.json`, `requirements.txt`).
-* 🐍 **Smart Python Dist Mapping:** Maps top canonical Python import names (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`, `sklearn` → `scikit-learn`, etc.) to prevent false alarms.
-* 🎯 **Smart Built-in Filtering:** Automatically ignores standard Node.js (`fs`, `path`, `crypto`) and Python (`os`, `sys`, `json`) built-in modules.
+* 🌐 **Multi-Ecosystem:** Scans JavaScript, TypeScript, React (JSX/TSX), Python (`.py`), and manifests (`package.json`, `requirements*.txt`, `pyproject.toml`).
+* 📦 **Monorepo & Workspace Aware:** Automatically ignores local `workspace:*`, `file:`, `link:`, and git dependencies in `package.json`, preventing false positives in Turborepo, Nx, and pnpm monorepos.
+* 🐍 **Smart Python Dist Mapping:** Maps top canonical Python import names (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`, `sklearn` → `scikit-learn`, etc.) and ignores local module trees and docstrings.
+* 🎯 **Smart Built-in Filtering:** Automatically ignores standard Node.js (`fs`, `path`, `crypto`) and Python (`os`, `sys`, `json`, `__future__`, `_thread`) built-in modules.
 * 🚦 **Fail-Closed CI/CD Design:** Returns `exit 1` on critical hallucinations, `exit 2` on missing directories or network errors, and `exit 0` on clean verification.
 
 ---
@@ -115,7 +115,7 @@ jobs:
         with:
           node-version: '20'
       - name: Scan for Hallucinated Dependencies
-        run: node bin/slop-deps.js --dir .
+        run: node bin/slop-deps.js --dir . --strict
 ```
 
 ---

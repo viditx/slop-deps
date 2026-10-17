@@ -1,0 +1,11 @@
+[project]
+name = "test-project"
+version = "0.1.0"
+dependencies = [
+    "requests>=2.28.0",
+    "fake-pyproject-hallucinated-xyz-888>=1.0.0"
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pydantic = "^2.0.0"

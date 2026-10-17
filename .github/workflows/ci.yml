@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  slop-check:
-    name: Scan for Hallucinated Dependencies
+  test:
+    name: Run Automated Tests & Self Dogfooding
     runs-on: ubuntu-latest
 
     steps:
@@ -18,5 +18,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run slop-deps on source
-        run: node bin/slop-deps.js --dir .
+      - name: Run test suite
+        run: npm test
+
+      - name: Dogfood slop-deps on src/
+        run: node bin/slop-deps.js --dir src

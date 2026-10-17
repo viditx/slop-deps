@@ -6,7 +6,9 @@ export const NODE_BUILTINS = new Set([
   'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
   'stream/promises', 'stream/web', 'string_decoder', 'sys', 'timers',
   'timers/promises', 'tls', 'trace_events', 'tty', 'url', 'util',
-  'util/types', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'
+  'util/types', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib',
+  'test', 'assert/strict', 'dns/promises', 'inspector/promises',
+  'sqlite', 'stream/consumers'
 ]);
 
 export const PYTHON_BUILTINS = new Set([
@@ -15,7 +17,7 @@ export const PYTHON_BUILTINS = new Set([
   'builtins', 'bz2', 'calendar', 'cgi', 'cgitb', 'chunk', 'cmath',
   'cmd', 'code', 'codecs', 'codeop', 'collections', 'colorsys', 'compileall',
   'concurrent', 'configparser', 'contextlib', 'contextvars', 'copy', 'copyreg',
-  'cProfile', 'crypt', 'csv', 'ctypes', 'curses', 'dataclasses', 'datetime',
+  'cprofile', 'crypt', 'csv', 'ctypes', 'curses', 'dataclasses', 'datetime',
   'dbm', 'decimal', 'difflib', 'dis', 'distutils', 'doctest', 'email',
   'encodings', 'ensurepip', 'enum', 'errno', 'faulthandler', 'fcntl',
   'filecmp', 'fileinput', 'fnmatch', 'fractions', 'ftplib', 'functools',
@@ -40,7 +42,8 @@ export const PYTHON_BUILTINS = new Set([
   'typing', 'unicodedata', 'unittest', 'urllib', 'uu', 'uuid', 'venv',
   'warnings', 'wave', 'weakref', 'webbrowser', 'winreg', 'winsound',
   'wsgiref', 'xdrlib', 'xml', 'xmlrpc', 'zipapp', 'zipfile', 'zipimport',
-  'zlib', 'zoneinfo'
+  'zlib', 'zoneinfo', 'tomllib',
+  '__future__', '__main__'
 ]);
 
 export function isBuiltin(pkgName, ecosystem) {
@@ -49,7 +52,10 @@ export function isBuiltin(pkgName, ecosystem) {
     return NODE_BUILTINS.has(clean);
   }
   if (ecosystem === 'pypi') {
-    return PYTHON_BUILTINS.has(pkgName.toLowerCase());
+    const lower = pkgName.toLowerCase();
+    // All _-prefixed names are C-level stdlib internals (_thread, _collections_abc, etc.)
+    if (lower.startsWith('_')) return true;
+    return PYTHON_BUILTINS.has(lower);
   }
   return false;
 }

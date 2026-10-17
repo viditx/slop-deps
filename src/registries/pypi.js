@@ -2,36 +2,31 @@ import { resolvePyPiDistributionName } from '../pypi-map.js';
 
 const CACHE = new Map();
 
-export async function checkPyPiPackage(pkgName, isManifest = false) {
+export async function checkPyPiPackage(pkgName) {
   const distName = resolvePyPiDistributionName(pkgName);
-  const cacheKey = `${distName}:${isManifest}`;
-  if (CACHE.has(cacheKey)) return CACHE.get(cacheKey);
+  if (CACHE.has(distName)) return CACHE.get(distName);
 
   const url = `https://pypi.org/pypi/${encodeURIComponent(distName)}/json`;
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
 
+  try {
     const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
 
     if (res.status === 404) {
-      // If declared in requirements.txt or mapped canonically, 404 is CRITICAL.
-      // If raw import in .py code, it could be an unmapped sub-package or internal module.
-      const isCritical = isManifest || distName !== pkgName;
       const result = {
         name: pkgName,
         resolvedDist: distName,
         ecosystem: 'pypi',
-        status: isCritical ? 'HALLUCINATED' : 'UNRESOLVED_IMPORT',
-        risk: isCritical ? 'CRITICAL' : 'WARN',
+        status: 'HALLUCINATED',
+        risk: 'CRITICAL',
         exists: false,
-        message: isCritical
-          ? `Package '${distName}' DOES NOT EXIST on PyPI. Potential AI hallucination trap!`
-          : `Import '${pkgName}' unresolved on PyPI. Verify if this belongs to a multi-package distribution.`
+        message: distName !== pkgName
+          ? `Import '${pkgName}' maps to distribution '${distName}', which DOES NOT EXIST on PyPI. Potential AI hallucination trap!`
+          : `Package '${distName}' DOES NOT EXIST on PyPI. Potential AI hallucination trap!`
       };
-      CACHE.set(cacheKey, result);
+      CACHE.set(distName, result);
       return result;
     }
 
@@ -44,7 +39,7 @@ export async function checkPyPiPackage(pkgName, isManifest = false) {
         exists: null,
         message: `PyPI returned HTTP ${res.status}`
       };
-      CACHE.set(pkgName, result);
+      CACHE.set(distName, result);
       return result;
     }
 
@@ -71,7 +66,11 @@ export async function checkPyPiPackage(pkgName, isManifest = false) {
     let risk = 'CLEAN';
     let message = 'Legitimate published PyPI package.';
 
-    if (ageDays < 30 && versions.length <= 2) {
+    if (versions.length === 0) {
+      status = 'SUSPICIOUS';
+      risk = 'HIGH';
+      message = 'Package exists on PyPI registry, but has 0 published releases.';
+    } else if (ageDays < 30 && versions.length <= 2) {
       status = 'SUSPICIOUS';
       risk = 'HIGH';
       message = `Created recently (${ageDays}d ago) on PyPI. Review carefully.`;
@@ -79,6 +78,7 @@ export async function checkPyPiPackage(pkgName, isManifest = false) {
 
     const result = {
       name: pkgName,
+      resolvedDist: distName,
       ecosystem: 'pypi',
       status,
       risk,
@@ -89,7 +89,7 @@ export async function checkPyPiPackage(pkgName, isManifest = false) {
       description: data.info?.summary || '',
       message
     };
-    CACHE.set(pkgName, result);
+    CACHE.set(distName, result);
     return result;
   } catch (err) {
     const result = {
@@ -100,7 +100,9 @@ export async function checkPyPiPackage(pkgName, isManifest = false) {
       exists: null,
       message: `Failed to query PyPI: ${err.message}`
     };
-    CACHE.set(pkgName, result);
+    CACHE.set(distName, result);
     return result;
+  } finally {
+    clearTimeout(timeout);
   }
 }

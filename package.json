@@ -8,7 +8,7 @@
     "slop-deps": "bin/slop-deps.js"
   },
   "scripts": {
-    "test": "node bin/slop-deps.js --dir test"
+    "test": "node test/run-tests.js"
   },
   "keywords": [
     "ai",
