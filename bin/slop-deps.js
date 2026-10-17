@@ -45,7 +45,7 @@ if (dirIdx !== -1 && args[dirIdx + 1]) {
 async function run() {
   if (!isJson) {
     printBanner();
-    process.stdout.write(`  Scanning directory: ${targetDir} ...\r`);
+    process.stdout.write(`  Scanning directory: ${targetDir} ...`);
   }
 
   let result;

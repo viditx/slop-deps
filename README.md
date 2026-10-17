@@ -115,7 +115,7 @@ jobs:
         with:
           node-version: '20'
       - name: Scan for Hallucinated Dependencies
-        run: node path/to/slop-deps/bin/slop-deps.js
+        run: node bin/slop-deps.js --dir .
 ```
 
 ---
