@@ -2,15 +2,17 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { extractJsImports } from './extractors/js-ts.js';
 import { extractPythonImports } from './extractors/python.js';
-import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml } from './extractors/manifests.js';
+import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg } from './extractors/manifests.js';
 import { isBuiltin } from './builtins.js';
 import { checkNpmPackage } from './registries/npm.js';
 import { checkPyPiPackage } from './registries/pypi.js';
 
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
-  'out', 'coverage', '.cache', 'venv', '.venv', '__pycache__',
-  '.idea', '.vscode'
+  'out', 'coverage', '.cache', 'env', '.env', 'venv', '.venv',
+  '.tox', '.nox', '.pytest_cache', '.mypy_cache', '.ruff_cache',
+  '.svelte-kit', '.astro', '.output', '.turbo', '.parcel-cache',
+  'site-packages', '__pycache__', '.idea', '.vscode'
 ]);
 
 // Lightweight concurrent pool (zero external dependencies)
@@ -139,8 +141,17 @@ export async function scanDirectory(targetDir = process.cwd()) {
       continue;
     }
 
-    // Source files
-    if (['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'].includes(ext)) {
+    if (basename === 'setup.cfg') {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractSetupCfg(content, rel));
+      } catch {}
+      continue;
+    }
+
+    // Source files (JS, TS, React, Vue, Svelte, Astro components)
+    if (['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.vue', '.svelte', '.astro'].includes(ext)) {
       try {
         const content = await fs.readFile(file, 'utf-8');
         const rel = path.relative(targetDir, file);

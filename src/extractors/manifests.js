@@ -22,9 +22,19 @@ export function extractPackageJson(content, filePath = 'package.json') {
             ) {
               continue;
             }
-            // Handle npm: aliases, e.g. "my-pkg": "npm:real-pkg@^1.0.0"
+            // Handle npm: aliases, e.g. "my-pkg": "npm:real-pkg@^1.0.0" or "btn": "npm:@scope/btn@^1.0.0"
             if (v.startsWith('npm:')) {
-              const targetPkg = v.slice(4).split('@')[0];
+              let trimmed = v.slice(4).trim();
+              let targetPkg = null;
+              if (trimmed.startsWith('@')) {
+                const parts = trimmed.split('/');
+                if (parts.length >= 2) {
+                  const pkgPart = parts[1].split('@')[0];
+                  targetPkg = `${parts[0]}/${pkgPart}`;
+                }
+              } else {
+                targetPkg = trimmed.split('/')[0].split('@')[0];
+              }
               if (targetPkg) {
                 packages.push({
                   name: targetPkg,
@@ -110,61 +120,8 @@ export function extractRequirementsTxt(content, filePath = 'requirements.txt') {
 export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
   const packages = [];
   const lines = content.split('\n');
+  let currentSection = '';
   let inDependenciesArray = false;
-  let inPoetrySection = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].trim();
-    const commentIdx = line.indexOf('#');
-    if (commentIdx !== -1) line = line.slice(0, commentIdx).trim();
-    if (!line) continue;
-
-    // Section header check
-    if (line.startsWith('[')) {
-      inDependenciesArray = false;
-      inPoetrySection = line === '[tool.poetry.dependencies]';
-      continue;
-    }
-
-    // PEP 621 dependencies array start
-    if (/^(?:dependencies|optional-dependencies)\s*=\s*\[/.test(line)) {
-      inDependenciesArray = true;
-      if (line.endsWith(']')) {
-        // Single line array
-        const inner = line.slice(line.indexOf('[') + 1, line.lastIndexOf(']'));
-        parseTomlArrayItems(inner, i + 1);
-        inDependenciesArray = false;
-      }
-      continue;
-    }
-
-    if (inDependenciesArray) {
-      if (line.startsWith(']')) {
-        inDependenciesArray = false;
-        continue;
-      }
-      parseTomlArrayItems(line, i + 1);
-      continue;
-    }
-
-    // Poetry key = value style
-    if (inPoetrySection) {
-      const match = line.match(/^([a-zA-Z0-9_\-\.]+)\s*=/);
-      if (match) {
-        const name = match[1].toLowerCase();
-        // Ignore python version specifier
-        if (name !== 'python') {
-          packages.push({
-            name,
-            raw: line,
-            ecosystem: 'pypi',
-            file: filePath,
-            line: i + 1
-          });
-        }
-      }
-    }
-  }
 
   function parseTomlArrayItems(text, lineNum) {
     const itemMatches = text.matchAll(/["']([^"']+)["']/g);
@@ -183,6 +140,136 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
             line: lineNum
           });
         }
+      }
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+    const commentIdx = line.indexOf('#');
+    if (commentIdx !== -1) line = line.slice(0, commentIdx).trim();
+    if (!line) continue;
+
+    // Check section header: [section] or [[array_of_tables]]
+    const sectionMatch = line.match(/^\[+([^\]]+)\]+/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim().toLowerCase();
+      inDependenciesArray = false;
+      continue;
+    }
+
+    const isProjectSection = currentSection === 'project';
+    const isOptionalDepsSection = currentSection.startsWith('project.optional-dependencies') ||
+                                  currentSection.startsWith('dependency-groups');
+
+    // PEP 621 dependencies array or group array start
+    if (
+      (isProjectSection && /^(?:dependencies|optional-dependencies)\s*=\s*\[/i.test(line)) ||
+      (isOptionalDepsSection && /^[a-zA-Z0-9_\-\.]+\s*=\s*\[/i.test(line))
+    ) {
+      inDependenciesArray = true;
+      if (line.endsWith(']')) {
+        const inner = line.slice(line.indexOf('[') + 1, line.lastIndexOf(']'));
+        parseTomlArrayItems(inner, i + 1);
+        inDependenciesArray = false;
+      }
+      continue;
+    }
+
+    if (inDependenciesArray) {
+      if (line.startsWith(']')) {
+        inDependenciesArray = false;
+        continue;
+      }
+      parseTomlArrayItems(line, i + 1);
+      continue;
+    }
+
+    // Poetry key = value style
+    const isPoetrySection = currentSection === 'tool.poetry.dependencies' ||
+                            currentSection === 'tool.poetry.dev-dependencies' ||
+                            /^tool\.poetry\.group\.[^.]+\.dependencies$/.test(currentSection);
+
+    if (isPoetrySection) {
+      const match = line.match(/^([a-zA-Z0-9_\-\.]+)\s*=/);
+      if (match) {
+        const name = match[1].toLowerCase();
+        if (name !== 'python') {
+          packages.push({
+            name,
+            raw: line,
+            ecosystem: 'pypi',
+            file: filePath,
+            line: i + 1
+          });
+        }
+      }
+    }
+  }
+
+  return packages;
+}
+
+export function extractSetupCfg(content, filePath = 'setup.cfg') {
+  const packages = [];
+  const lines = content.split('\n');
+  let inRequiresSection = false;
+  let currentSection = '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    let line = rawLine.trim();
+    const commentIdx = line.indexOf('#');
+    if (commentIdx !== -1) line = line.slice(0, commentIdx).trim();
+
+    if (!line) {
+      if (!rawLine.startsWith(' ') && !rawLine.startsWith('\t')) {
+        inRequiresSection = false;
+      }
+      continue;
+    }
+
+    if (line.startsWith('[')) {
+      currentSection = line.replace(/[\[\]]/g, '').trim().toLowerCase();
+      inRequiresSection = false;
+      continue;
+    }
+
+    if (
+      (currentSection === 'options' && /^install_requires\s*=/i.test(line)) ||
+      (currentSection === 'options.extras_require' && /^[a-zA-Z0-9_\-\.]+\s*=/i.test(line))
+    ) {
+      inRequiresSection = true;
+      const afterEq = line.slice(line.indexOf('=') + 1).trim();
+      if (afterEq) {
+        parseReqItem(afterEq, i + 1);
+      }
+      continue;
+    }
+
+    if (inRequiresSection) {
+      // Indented continuation line
+      if (rawLine.startsWith(' ') || rawLine.startsWith('\t')) {
+        parseReqItem(line, i + 1);
+      } else {
+        inRequiresSection = false;
+      }
+    }
+  }
+
+  function parseReqItem(item, lineNum) {
+    if (!item || item.startsWith('-') || item.includes('://')) return;
+    const match = item.match(/^([a-zA-Z0-9_\-\.]+)/);
+    if (match) {
+      const name = match[1].toLowerCase();
+      if (name && /[a-zA-Z0-9]/.test(name)) {
+        packages.push({
+          name,
+          raw: item,
+          ecosystem: 'pypi',
+          file: filePath,
+          line: lineNum
+        });
       }
     }
   }

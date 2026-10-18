@@ -15,9 +15,11 @@ function cleanPackageName(specifier) {
     trimmed.startsWith('.') ||
     trimmed.startsWith('/') ||
     trimmed.startsWith('~') ||
+    trimmed.startsWith('~~') || // Nuxt root alias
     trimmed.startsWith('#') ||
     trimmed.startsWith('@/') ||
-    trimmed.startsWith('$')    // SvelteKit $app, $lib, $env
+    trimmed.startsWith('@@') || // Nuxt root alias
+    trimmed.startsWith('$')     // SvelteKit $app, $lib, $env
   ) {
     return null;
   }
@@ -44,10 +46,10 @@ function cleanPackageName(specifier) {
   // Handle scoped packages: @org/pkg/sub -> @org/pkg
   if (trimmed.startsWith('@')) {
     const parts = trimmed.split('/');
-    if (parts.length >= 2) {
+    if (parts.length >= 2 && parts[1].trim()) {
       return `${parts[0]}/${parts[1]}`;
     }
-    return trimmed;
+    return null;
   }
 
   // Handle regular packages: lodash/merge -> lodash
@@ -161,35 +163,133 @@ function unmask(text, strings) {
   return text.replace(new RegExp(PH_START + '(\\d+)' + PH_END, 'g'), (_, i) => strings[+i] ?? '');
 }
 
+const TS_PRIMITIVES = new Set([
+  'void', 'string', 'number', 'boolean', 'any', 'never', 'unknown', 'symbol', 'bigint', 'object'
+]);
+
+function isInsideJsxOrBlock(code, matchIndex, isStatic = true) {
+  let braceDepth = 0;
+  for (let i = 0; i < matchIndex; i++) {
+    const ch = code[i];
+    if (ch === '{') braceDepth++;
+    else if (ch === '}' && braceDepth > 0) braceDepth--;
+  }
+
+  // Static imports and exports are syntactically illegal inside blocks or functions
+  if (isStatic && braceDepth > 0) return true;
+
+  // Track unclosed JSX/HTML tags up to match index
+  const openTags = [];
+  let i = 0;
+  while (i < matchIndex) {
+    const ch = code[i];
+    if (ch === '<') {
+      const prev = i > 0 ? code[i - 1] : ' ';
+      if (/[a-zA-Z0-9_$]/.test(prev)) {
+        i++;
+        continue;
+      }
+
+      const isClose = code[i + 1] === '/';
+      const nameStart = isClose ? i + 2 : i + 1;
+      let nameEnd = nameStart;
+      while (nameEnd < matchIndex && /[a-zA-Z0-9_.:-]/.test(code[nameEnd])) {
+        nameEnd++;
+      }
+
+      const tagName = code.slice(nameStart, nameEnd);
+      if (!tagName || !/^[a-zA-Z]/.test(tagName) || TS_PRIMITIVES.has(tagName.toLowerCase())) {
+        i++;
+        continue;
+      }
+
+      let j = nameEnd;
+      let exprDepth = 0;
+      let isSelfClose = false;
+
+      while (j < matchIndex) {
+        const tCh = code[j];
+        if (tCh === '{') exprDepth++;
+        else if (tCh === '}' && exprDepth > 0) exprDepth--;
+        else if (tCh === '>' && exprDepth === 0) {
+          if (code[j - 1] === '/') isSelfClose = true;
+          break;
+        }
+        j++;
+      }
+
+      if (j >= matchIndex) {
+        break;
+      }
+
+      if (isSelfClose) {
+        i = j + 1;
+        continue;
+      }
+
+      if (isClose) {
+        if (openTags.length > 0 && openTags[openTags.length - 1] === tagName) {
+          openTags.pop();
+        }
+      } else {
+        openTags.push(tagName);
+      }
+
+      i = j + 1;
+      continue;
+    }
+    i++;
+  }
+
+  const lastOpen = openTags[openTags.length - 1];
+  if (lastOpen && lastOpen.toLowerCase() !== 'script') {
+    return true;
+  }
+
+  return false;
+}
+
 // Patterns run over the whole masked file, so multi-line statements match.
 const PATTERNS = [
-  // import/export ... from 'pkg' (default, named, mixed, namespace, type)
+  // 0: import/export ... from 'pkg' (default, named, mixed, namespace, type)
   /(?:^|[;\s}])(?:import|export)\s+(?:type\s+)?(?:\*\s*(?:as\s+[\w$]+)?|[\w$]+(?:\s*,\s*(?:\{[^{}]*\}|\*\s*as\s+[\w$]+))?|\{[^{}]*\})\s*from\s*['"]([^'"]+)['"]/g,
-  // side-effect import: import 'pkg'
+  // 1: side-effect import: import 'pkg'
   /(?:^|[;\s])import\s*['"]([^'"]+)['"]/g,
-  // require('pkg') and require.resolve('pkg') in any expression position
-  /(?:^|[^\w.$])require(?:\.resolve)?\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  // dynamic import: import('pkg') and import.meta.resolve('pkg')
-  /\bimport(?:\.meta\.resolve)?\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+  // 2: require('pkg') and require.resolve('pkg', ...) in any expression position
+  /(?:^|[^\w.$])require(?:\.resolve)?\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g,
+  // 3: dynamic import: import('pkg', ...) and import.meta.resolve('pkg', ...)
+  /\bimport(?:\.meta\.resolve)?\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g
 ];
 
 export function extractJsImports(sourceCode, filePath = '') {
   const packages = new Map();
   const { masked, strings } = maskStrings(sourceCode);
 
-  for (const regex of PATTERNS) {
+  for (let pIdx = 0; pIdx < PATTERNS.length; pIdx++) {
+    const regex = PATTERNS[pIdx];
+    const isStatic = pIdx < 2;
     regex.lastIndex = 0;
     let match;
+
     while ((match = regex.exec(masked)) !== null) {
-      const spec = unmask(match[1], strings).trim();
-      const pkg = cleanPackageName(spec);
+      if (isInsideJsxOrBlock(masked, match.index, isStatic)) {
+        continue;
+      }
+
+      const rawSpec = unmask(match[1], strings).trim();
+      // Skip template literals with dynamic interpolation
+      if (rawSpec.includes('${')) {
+        continue;
+      }
+
+      const pkg = cleanPackageName(rawSpec);
       if (pkg && !packages.has(pkg)) {
         packages.set(pkg, {
           name: pkg,
           ecosystem: 'npm',
           file: filePath,
           line: masked.slice(0, match.index).split('\n').length,
-          raw: spec
+          raw: rawSpec
         });
       }
     }

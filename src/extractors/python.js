@@ -12,30 +12,50 @@ function stripDocstrings(code) {
 export function extractPythonImports(sourceCode, filePath = '') {
   const packages = new Map();
   const cleanCode = stripDocstrings(sourceCode);
-  const lines = cleanCode.split('\n');
+  const rawLines = cleanCode.split('\n');
 
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    let line = lines[lineIndex];
+  // Strip inline comments outside string literals and merge backslash line continuations
+  const processedLines = [];
+  let pendingText = '';
+  let startLineNum = 1;
 
-    // Strip inline comments outside of string literals
+  for (let i = 0; i < rawLines.length; i++) {
+    let line = rawLines[i];
     let inQuote = null;
     let commentIdx = -1;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
+
+    for (let c = 0; c < line.length; c++) {
+      const ch = line[c];
       if (inQuote) {
-        if (ch === '\\') { i++; continue; }
+        if (ch === '\\') { c++; continue; }
         if (ch === inQuote) inQuote = null;
       } else if (ch === '"' || ch === "'") {
         inQuote = ch;
       } else if (ch === '#') {
-        commentIdx = i;
+        commentIdx = c;
         break;
       }
     }
+
     if (commentIdx !== -1) {
       line = line.slice(0, commentIdx);
     }
 
+    const trimmedEnd = line.trimEnd();
+    if (trimmedEnd.endsWith('\\')) {
+      if (!pendingText) startLineNum = i + 1;
+      pendingText += trimmedEnd.slice(0, -1) + ' ';
+    } else {
+      if (pendingText) {
+        processedLines.push({ text: pendingText + trimmedEnd, lineNum: startLineNum });
+        pendingText = '';
+      } else {
+        processedLines.push({ text: trimmedEnd, lineNum: i + 1 });
+      }
+    }
+  }
+
+  for (const { text: line, lineNum } of processedLines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
@@ -51,7 +71,7 @@ export function extractPythonImports(sourceCode, filePath = '') {
             name: rootPkg,
             ecosystem: 'pypi',
             file: filePath,
-            line: lineIndex + 1,
+            line: lineNum,
             raw: modulePath
           });
         }
@@ -72,13 +92,14 @@ export function extractPythonImports(sourceCode, filePath = '') {
               name: rootPkg,
               ecosystem: 'pypi',
               file: filePath,
-              line: lineIndex + 1,
+              line: lineNum,
               raw: cleanItem
             });
           }
         }
       }
     }
+
     // dynamic imports: importlib.import_module('foo') or __import__('foo')
     let dynMatch;
     PY_DYNAMIC_IMPORT.lastIndex = 0;
@@ -91,7 +112,7 @@ export function extractPythonImports(sourceCode, filePath = '') {
             name: rootPkg,
             ecosystem: 'pypi',
             file: filePath,
-            line: lineIndex + 1,
+            line: lineNum,
             raw: rawModule
           });
         }
