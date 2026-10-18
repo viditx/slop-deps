@@ -40,11 +40,21 @@ let targetDir = process.cwd();
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (arg === '--dir' || arg === '-d') {
-    if (args[i + 1]) targetDir = path.resolve(process.cwd(), args[++i]);
+    if (args[i + 1] && !args[i + 1].startsWith('-')) {
+      targetDir = path.resolve(process.cwd(), args[++i]);
+    } else {
+      console.error(`\x1b[31m✖ ERROR:\x1b[0m Option '${arg}' requires a directory path.\n`);
+      process.exit(2);
+    }
   } else if (arg.startsWith('--dir=')) {
     targetDir = path.resolve(process.cwd(), arg.slice(6));
   } else if (arg.startsWith('-d=')) {
     targetDir = path.resolve(process.cwd(), arg.slice(3));
+  } else if (arg === '--json' || arg === '--strict') {
+    // Valid flags
+  } else if (arg.startsWith('-')) {
+    console.error(`\x1b[31m✖ ERROR:\x1b[0m Unrecognized option: '${arg}'. Run 'slop-deps --help' for usage.\n`);
+    process.exit(2);
   }
 }
 

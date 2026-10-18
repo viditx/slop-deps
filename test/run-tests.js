@@ -6,6 +6,7 @@ import { extractPackageJson, extractPyProjectToml, extractSetupCfg, extractPipfi
 import { extractPythonImports } from '../src/extractors/python.js';
 import { resolvePyPiDistributionName } from '../src/pypi-map.js';
 import { isBuiltin } from '../src/builtins.js';
+import { spawnSync } from 'node:child_process';
 
 async function run() {
   console.log('🧪 Running slop-deps test suite...\n');
@@ -312,6 +313,25 @@ async function run() {
   assert.equal(resolvePyPiDistributionName('google.ai.generativelanguage'), 'google-ai-generativelanguage');
   assert.ok(isBuiltin('antigravity', 'pypi'), 'antigravity must be recognized as python stdlib builtin');
   console.log('  ✔ PASS: Canonical mappings and python builtins verified\n');
+
+  // Test 18: CLI exit codes and argument verification
+  console.log('Test 18: CLI exit codes and argument parsing');
+  const binPath = path.resolve('bin', 'slop-deps.js');
+
+  const vResult = spawnSync(process.execPath, [binPath, '--version'], { encoding: 'utf-8' });
+  assert.equal(vResult.status, 0, '--version must exit 0');
+  assert.ok(vResult.stdout.includes('1.0.0'), '--version must output version');
+
+  const invResult = spawnSync(process.execPath, [binPath, '--unknown-flag'], { encoding: 'utf-8' });
+  assert.equal(invResult.status, 2, 'Unrecognized option must exit 2');
+
+  const missDirResult = spawnSync(process.execPath, [binPath, '-d'], { encoding: 'utf-8' });
+  assert.equal(missDirResult.status, 2, 'Missing directory arg after -d must exit 2');
+
+  const nonExistDir = spawnSync(process.execPath, [binPath, '--dir', 'non_existent_folder_xyz'], { encoding: 'utf-8' });
+  assert.equal(nonExistDir.status, 2, 'Non-existent directory must fail-closed with exit 2');
+
+  console.log('  ✔ PASS: CLI flags, fail-closed exits, and argument validation verified\n');
 
   console.log('🎉 All test assertions passed successfully!');
 }
