@@ -109,7 +109,7 @@ export async function checkPyPiPackage(pkgName) {
   IN_FLIGHT.set(cacheKey, promise);
   try {
     const result = await promise;
-    if (result.status !== 'NETWORK_ERROR') {
+    if (result.status !== 'NETWORK_ERROR' && result.status !== 'UNKNOWN') {
       CACHE.set(cacheKey, result);
     }
     return result;

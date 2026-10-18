@@ -276,3 +276,93 @@ export function extractSetupCfg(content, filePath = 'setup.cfg') {
 
   return packages;
 }
+
+export function extractPipfile(content, filePath = 'Pipfile') {
+  const packages = [];
+  const lines = content.split('\n');
+  let currentSection = '';
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+    const commentIdx = line.indexOf('#');
+    if (commentIdx !== -1) line = line.slice(0, commentIdx).trim();
+    if (!line) continue;
+
+    const sectionMatch = line.match(/^\[+([^\]]+)\]+/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim().toLowerCase();
+      continue;
+    }
+
+    if (currentSection === 'packages' || currentSection === 'dev-packages' || currentSection.endsWith('-packages')) {
+      const match = line.match(/^(?:["']([^"']+)["']|([a-zA-Z0-9_\-\.]+))\s*=/);
+      if (match) {
+        const name = (match[1] || match[2]).toLowerCase();
+        if (name && /[a-zA-Z0-9]/.test(name) && name !== 'python') {
+          packages.push({
+            name,
+            raw: line,
+            ecosystem: 'pypi',
+            file: filePath,
+            line: i + 1
+          });
+        }
+      }
+    }
+  }
+
+  return packages;
+}
+
+export function extractSetupPy(content, filePath = 'setup.py') {
+  const packages = [];
+  const listMatches = content.matchAll(/(?:install_requires|setup_requires|tests_require)\s*=\s*\[([\s\S]*?)\]/g);
+  for (const m of listMatches) {
+    const listBody = m[1];
+    const itemMatches = listBody.matchAll(/["']([^"']+)["']/g);
+    for (const item of itemMatches) {
+      const spec = item[1].trim();
+      if (!spec || spec.startsWith('-') || spec.includes('://')) continue;
+      const nameMatch = spec.match(/^([a-zA-Z0-9_\-\.]+)/);
+      if (nameMatch) {
+        const name = nameMatch[1].toLowerCase();
+        if (name && /[a-zA-Z0-9]/.test(name)) {
+          packages.push({
+            name,
+            raw: spec,
+            ecosystem: 'pypi',
+            file: filePath
+          });
+        }
+      }
+    }
+  }
+
+  const extrasMatch = content.match(/extras_require\s*=\s*\{([\s\S]*?)\}/);
+  if (extrasMatch) {
+    const dictBody = extrasMatch[1];
+    const innerLists = dictBody.matchAll(/\[([\s\S]*?)\]/g);
+    for (const inner of innerLists) {
+      const itemMatches = inner[1].matchAll(/["']([^"']+)["']/g);
+      for (const item of itemMatches) {
+        const spec = item[1].trim();
+        if (!spec || spec.startsWith('-') || spec.includes('://')) continue;
+        const nameMatch = spec.match(/^([a-zA-Z0-9_\-\.]+)/);
+        if (nameMatch) {
+          const name = nameMatch[1].toLowerCase();
+          if (name && /[a-zA-Z0-9]/.test(name)) {
+            packages.push({
+              name,
+              raw: spec,
+              ecosystem: 'pypi',
+              file: filePath
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return packages;
+}
+

@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { scanDirectory } from '../src/index.js';
 import { extractJsImports } from '../src/extractors/js-ts.js';
-import { extractPackageJson, extractPyProjectToml, extractSetupCfg } from '../src/extractors/manifests.js';
+import { extractPackageJson, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy } from '../src/extractors/manifests.js';
 import { extractPythonImports } from '../src/extractors/python.js';
 import { resolvePyPiDistributionName } from '../src/pypi-map.js';
+import { isBuiltin } from '../src/builtins.js';
 
 async function run() {
   console.log('🧪 Running slop-deps test suite...\n');
@@ -200,6 +201,117 @@ async function run() {
   const nuxtResult = extractJsImports(nuxtSample, 'nuxt.vue');
   assert.equal(nuxtResult.length, 0, 'Nuxt @@ and ~~ root aliases must not be flagged as external packages');
   console.log('  ✔ PASS: Nuxt root aliases ignored cleanly\n');
+
+  // Test 12: Python inline statement and semicolon splitting
+  console.log('Test 12: Python semicolons and inline statements');
+  const pySemicolonSample = `
+    import requests; import yaml; import fastapi
+    x = 1; from pydantic import BaseModel
+    if True: import click
+    try: import uvicorn
+  `;
+  const pySemiResult = extractPythonImports(pySemicolonSample, 'semi.py');
+  const pySemiNames = new Set(pySemiResult.map(p => p.name));
+  assert.ok(pySemiNames.has('requests'), 'requests must be extracted across semicolon');
+  assert.ok(pySemiNames.has('yaml'), 'yaml must be extracted across semicolon');
+  assert.ok(pySemiNames.has('fastapi'), 'fastapi must be extracted across semicolon');
+  assert.ok(pySemiNames.has('pydantic'), 'pydantic must be extracted after semicolon statement');
+  assert.ok(pySemiNames.has('click'), 'click must be extracted after if condition');
+  assert.ok(pySemiNames.has('uvicorn'), 'uvicorn must be extracted after try: block');
+  console.log('  ✔ PASS: Python semicolons, if-blocks, and try-blocks correctly split\n');
+
+  // Test 13: Minified JS/TS imports without whitespace
+  console.log('Test 13: Minified JS/TS import statements');
+  const minifiedSample = `
+    import{foo}from"minified-lib-1";
+    export{bar}from"minified-lib-2";
+    import*as ns from"minified-lib-3";
+    export*from"minified-lib-4";
+  `;
+  const minResult = extractJsImports(minifiedSample, 'min.js');
+  const minNames = new Set(minResult.map(p => p.name));
+  assert.ok(minNames.has('minified-lib-1'));
+  assert.ok(minNames.has('minified-lib-2'));
+  assert.ok(minNames.has('minified-lib-3'));
+  assert.ok(minNames.has('minified-lib-4'));
+  console.log('  ✔ PASS: Minified JS/TS import statements correctly extracted\n');
+
+  // Test 14: Test framework mock extraction (jest.mock, vi.mock)
+  console.log('Test 14: Test framework mock extraction');
+  const mockSample = `
+    jest.mock('mocked-dep-jest');
+    vi.mock('mocked-dep-vitest');
+    const act = jest.requireActual('mocked-actual-pkg');
+  `;
+  const mockResult = extractJsImports(mockSample, 'test.spec.ts');
+  const mockNames = new Set(mockResult.map(p => p.name));
+  assert.ok(mockNames.has('mocked-dep-jest'));
+  assert.ok(mockNames.has('mocked-dep-vitest'));
+  assert.ok(mockNames.has('mocked-actual-pkg'));
+  console.log('  ✔ PASS: jest.mock, vi.mock, and requireActual extracted\n');
+
+  // Test 15: Pipfile package extraction
+  console.log('Test 15: Pipfile package extraction');
+  const pipfileSample = `
+    [[source]]
+    url = "https://pypi.org/simple"
+    verify_ssl = true
+    name = "pypi"
+
+    [packages]
+    requests = "*"
+    flask = ">=2.0"
+    "psycopg2-binary" = "==2.9.3"
+
+    [dev-packages]
+    pytest = ">=7.0"
+    black = "*"
+  `;
+  const pipfileResult = extractPipfile(pipfileSample);
+  const pipfileNames = new Set(pipfileResult.map(p => p.name));
+  assert.ok(pipfileNames.has('requests'));
+  assert.ok(pipfileNames.has('flask'));
+  assert.ok(pipfileNames.has('psycopg2-binary'));
+  assert.ok(pipfileNames.has('pytest'));
+  assert.ok(pipfileNames.has('black'));
+  console.log('  ✔ PASS: Pipfile [packages] and [dev-packages] extracted\n');
+
+  // Test 16: setup.py package extraction
+  console.log('Test 16: setup.py package extraction');
+  const setupPySample = `
+    from setuptools import setup
+
+    setup(
+      name="my-package",
+      version="1.0.0",
+      install_requires=[
+        "requests>=2.25.0",
+        "urllib3<2.0"
+      ],
+      extras_require={
+        "dev": ["pytest", "black"],
+        "docs": ["sphinx"]
+      }
+    )
+  `;
+  const setupPyResult = extractSetupPy(setupPySample);
+  const setupPyNames = new Set(setupPyResult.map(p => p.name));
+  assert.ok(setupPyNames.has('requests'));
+  assert.ok(setupPyNames.has('urllib3'));
+  assert.ok(setupPyNames.has('pytest'));
+  assert.ok(setupPyNames.has('black'));
+  assert.ok(setupPyNames.has('sphinx'));
+  assert.ok(!setupPyNames.has('dev'), 'Dict key dev must not be extracted');
+  assert.ok(!setupPyNames.has('docs'), 'Dict key docs must not be extracted');
+  console.log('  ✔ PASS: setup.py install_requires and extras_require extracted cleanly\n');
+
+  // Test 17: Canonical mappings and python builtins
+  console.log('Test 17: Canonical mappings and python builtins');
+  assert.equal(resolvePyPiDistributionName('mysqldb'), 'mysqlclient');
+  assert.equal(resolvePyPiDistributionName('wx'), 'wxPython');
+  assert.equal(resolvePyPiDistributionName('google.ai.generativelanguage'), 'google-ai-generativelanguage');
+  assert.ok(isBuiltin('antigravity', 'pypi'), 'antigravity must be recognized as python stdlib builtin');
+  console.log('  ✔ PASS: Canonical mappings and python builtins verified\n');
 
   console.log('🎉 All test assertions passed successfully!');
 }

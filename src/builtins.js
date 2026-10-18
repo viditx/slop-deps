@@ -43,7 +43,7 @@ export const PYTHON_BUILTINS = new Set([
   'warnings', 'wave', 'weakref', 'webbrowser', 'winreg', 'winsound',
   'wsgiref', 'xdrlib', 'xml', 'xmlrpc', 'zipapp', 'zipfile', 'zipimport',
   'zlib', 'zoneinfo', 'tomllib',
-  'pip', 'setuptools',
+  'pip', 'setuptools', 'antigravity',
   '__future__', '__main__'
 ]);
 

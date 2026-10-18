@@ -251,14 +251,16 @@ function isInsideJsxOrBlock(code, matchIndex, isStatic = true) {
 
 // Patterns run over the whole masked file, so multi-line statements match.
 const PATTERNS = [
-  // 0: import/export ... from 'pkg' (default, named, mixed, namespace, type)
-  /(?:^|[;\s}])(?:import|export)\s+(?:type\s+)?(?:\*\s*(?:as\s+[\w$]+)?|[\w$]+(?:\s*,\s*(?:\{[^{}]*\}|\*\s*as\s+[\w$]+))?|\{[^{}]*\})\s*from\s*['"]([^'"]+)['"]/g,
+  // 0: import/export ... from 'pkg' (handles standard, type, namespace, and minified without space)
+  /(?:^|[;\s}])(?:import|export)(?:\s+(?:type\s+)?(?:[\w$]+(?:\s*,\s*(?:\{[^{}]*\}|\*\s*as\s+[\w$]+))?|\*\s*(?:as\s+[\w$]+)?|\{[^{}]*\})|\s*(?:type\s*)?(?:\{[^{}]*\}|\*\s*(?:as\s+[\w$]+)?))\s*from\s*['"]([^'"]+)['"]/g,
   // 1: side-effect import: import 'pkg'
   /(?:^|[;\s])import\s*['"]([^'"]+)['"]/g,
   // 2: require('pkg') and require.resolve('pkg', ...) in any expression position
   /(?:^|[^\w.$])require(?:\.resolve)?\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g,
   // 3: dynamic import: import('pkg', ...) and import.meta.resolve('pkg', ...)
-  /\bimport(?:\.meta\.resolve)?\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g
+  /\bimport(?:\.meta\.resolve)?\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g,
+  // 4: test framework module mocks: jest.mock('pkg'), vi.mock('pkg'), etc.
+  /(?:^|[^\w.$])(?:jest|vi)\.(?:mock|requireActual|requireMock|importActual)\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g
 ];
 
 export function extractJsImports(sourceCode, filePath = '') {

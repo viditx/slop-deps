@@ -39,7 +39,9 @@ export const PYPI_IMPORT_TO_DIST = new Map([
   ['levenshtein', 'Levenshtein'],
   ['psycopg2', 'psycopg2-binary'],
   ['pydantic_core', 'pydantic-core'],
-  ['grpc', 'grpcio']
+  ['grpc', 'grpcio'],
+  ['mysqldb', 'mysqlclient'],
+  ['wx', 'wxPython']
 ]);
 
 export function resolvePyPiDistributionName(importName) {
@@ -48,9 +50,12 @@ export function resolvePyPiDistributionName(importName) {
     return PYPI_IMPORT_TO_DIST.get(lower);
   }
 
-  // PEP 420 namespace packages: Google Cloud, Azure, OpenTelemetry
+  // PEP 420 namespace packages: Google Cloud, Google AI, Azure, OpenTelemetry
   if (lower.startsWith('google.cloud.')) {
     return `google-cloud-${lower.slice(13).replace(/_/g, '-')}`;
+  }
+  if (lower.startsWith('google.ai.')) {
+    return `google-ai-${lower.slice(10).replace(/_/g, '-')}`;
   }
   if (lower === 'google.protobuf') {
     return 'protobuf';

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { extractJsImports } from './extractors/js-ts.js';
 import { extractPythonImports } from './extractors/python.js';
-import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg } from './extractors/manifests.js';
+import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy } from './extractors/manifests.js';
 import { isBuiltin } from './builtins.js';
 import { checkNpmPackage } from './registries/npm.js';
 import { checkPyPiPackage } from './registries/pypi.js';
@@ -73,13 +73,14 @@ async function loadPathAliases(targetDir) {
       }
 
       const baseUrl = parsed.compilerOptions?.baseUrl;
-      if (baseUrl && typeof baseUrl === 'string' && baseUrl !== '.') {
+      if (baseUrl && typeof baseUrl === 'string') {
         const baseDir = path.resolve(targetDir, baseUrl);
         try {
           const subEntries = await fs.readdir(baseDir, { withFileTypes: true });
           for (const sub of subEntries) {
-            aliases.add(sub.name.toLowerCase());
-            if (sub.isFile()) {
+            if (sub.isDirectory()) {
+              aliases.add(sub.name.toLowerCase());
+            } else if (sub.isFile() && /\.(?:js|mjs|cjs|ts|tsx|jsx)$/i.test(sub.name)) {
               aliases.add(sub.name.replace(/\.[^.]+$/, '').toLowerCase());
             }
           }
@@ -178,6 +179,30 @@ export async function scanDirectory(targetDir = process.cwd()) {
         }
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractSetupCfg(content, rel));
+      } catch {}
+      continue;
+    }
+
+    if (basename === 'pipfile') {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractPipfile(content, rel));
+      } catch {}
+      continue;
+    }
+
+    if (basename === 'setup.py') {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const nameMatch = content.match(/name\s*=\s*["']([^"']+)["']/);
+        if (nameMatch) {
+          const cleanName = nameMatch[1].trim().toLowerCase();
+          localPyModules.add(cleanName.replace(/[-_]/g, '_'));
+          localPyModules.add(cleanName);
+        }
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractSetupPy(content, rel));
       } catch {}
       continue;
     }

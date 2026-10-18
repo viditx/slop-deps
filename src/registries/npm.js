@@ -38,7 +38,7 @@ export async function checkNpmPackage(pkgName) {
     }
 
     if (!res.ok) {
-      const result = {
+      return {
         name: pkgName,
         ecosystem: 'npm',
         status: 'UNKNOWN',
@@ -46,8 +46,6 @@ export async function checkNpmPackage(pkgName) {
         exists: null,
         message: `NPM registry returned HTTP ${res.status}`
       };
-      CACHE.set(pkgName, result);
-      return result;
     }
 
     const data = await res.json();
@@ -114,7 +112,7 @@ export async function checkNpmPackage(pkgName) {
   IN_FLIGHT.set(pkgName, promise);
   try {
     const result = await promise;
-    if (result.status !== 'NETWORK_ERROR') {
+    if (result.status !== 'NETWORK_ERROR' && result.status !== 'UNKNOWN') {
       CACHE.set(pkgName, result);
     }
     return result;
