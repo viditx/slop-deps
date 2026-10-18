@@ -71,6 +71,20 @@ async function loadPathAliases(targetDir) {
           if (cleanKey) aliases.add(cleanKey.toLowerCase());
         }
       }
+
+      const baseUrl = parsed.compilerOptions?.baseUrl;
+      if (baseUrl && typeof baseUrl === 'string' && baseUrl !== '.') {
+        const baseDir = path.resolve(targetDir, baseUrl);
+        try {
+          const subEntries = await fs.readdir(baseDir, { withFileTypes: true });
+          for (const sub of subEntries) {
+            aliases.add(sub.name.toLowerCase());
+            if (sub.isFile()) {
+              aliases.add(sub.name.replace(/\.[^.]+$/, '').toLowerCase());
+            }
+          }
+        } catch {}
+      }
     } catch {}
   }
   return aliases;
@@ -98,9 +112,10 @@ export async function scanDirectory(targetDir = process.cwd()) {
   const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir);
   const pathAliases = await loadPathAliases(targetDir);
 
-  // Python resolves imports against the local tree first: a same-named
-  // .py file or package directory means the import is local, not a PyPI dep.
+  // Monorepo workspace packages and local Python modules
+  const localWorkspacePackages = new Set();
   const localPyModules = new Set();
+
   for (const file of allFiles) {
     if (file.toLowerCase().endsWith('.py') || file.toLowerCase().endsWith('.pyi')) {
       localPyModules.add(path.basename(file).replace(/\.pyi?$/i, '').toLowerCase());
@@ -117,6 +132,12 @@ export async function scanDirectory(targetDir = process.cwd()) {
     if (basename === 'package.json') {
       try {
         const content = await fs.readFile(file, 'utf-8');
+        try {
+          const parsed = JSON.parse(content);
+          if (parsed.name && typeof parsed.name === 'string') {
+            localWorkspacePackages.add(parsed.name.toLowerCase());
+          }
+        } catch {}
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractPackageJson(content, rel));
       } catch {}
@@ -135,6 +156,11 @@ export async function scanDirectory(targetDir = process.cwd()) {
     if (basename === 'pyproject.toml') {
       try {
         const content = await fs.readFile(file, 'utf-8');
+        const nameMatch = content.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+        if (nameMatch) {
+          localPyModules.add(nameMatch[1].toLowerCase().replace(/[-_]/g, '_'));
+          localPyModules.add(nameMatch[1].toLowerCase());
+        }
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractPyProjectToml(content, rel));
       } catch {}
@@ -144,6 +170,12 @@ export async function scanDirectory(targetDir = process.cwd()) {
     if (basename === 'setup.cfg') {
       try {
         const content = await fs.readFile(file, 'utf-8');
+        const nameMatch = content.match(/^\s*name\s*=\s*(.+)$/m);
+        if (nameMatch) {
+          const cleanName = nameMatch[1].trim().toLowerCase();
+          localPyModules.add(cleanName.replace(/[-_]/g, '_'));
+          localPyModules.add(cleanName);
+        }
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractSetupCfg(content, rel));
       } catch {}
@@ -184,6 +216,8 @@ export async function scanDirectory(targetDir = process.cwd()) {
     // JS/TS local path alias & local folder checks
     if (ref.ecosystem === 'npm') {
       const lowerName = ref.name.toLowerCase();
+      if (localWorkspacePackages.has(lowerName)) continue;
+
       let isAlias = false;
       for (const alias of pathAliases) {
         if (lowerName === alias || lowerName.startsWith(alias + '/')) {

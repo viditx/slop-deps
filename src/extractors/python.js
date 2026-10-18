@@ -1,5 +1,5 @@
-const PY_FROM_IMPORT = /^\s*from\s+([a-zA-Z0-9_\.]+)\s+import/gm;
-const PY_IMPORT = /^\s*import\s+([a-zA-Z0-9_\., ]+)/gm;
+const PY_FROM_IMPORT = /^\s*from\s+([a-zA-Z0-9_\.]+)\s+import\s+([a-zA-Z0-9_,\s\(\)]+)/;
+const PY_IMPORT = /^\s*import\s+([a-zA-Z0-9_\., ]+)/;
 const PY_DYNAMIC_IMPORT = /\b(?:importlib\.import_module|__import__)\s*\(\s*['"]([^'"]+)['"]/g;
 
 function stripDocstrings(code) {
@@ -9,15 +9,54 @@ function stripDocstrings(code) {
   });
 }
 
+function getPythonRootModule(modulePath) {
+  const parts = modulePath.split('.');
+  const p0 = parts[0].toLowerCase();
+
+  // Handle known PEP 420 namespace packages
+  if (p0 === 'google') {
+    if (parts.length >= 3 && parts[1].toLowerCase() === 'cloud') {
+      return `google.cloud.${parts[2].toLowerCase()}`;
+    }
+    if (parts.length >= 2) {
+      return `google.${parts[1].toLowerCase()}`;
+    }
+    return 'google';
+  }
+
+  if (p0 === 'azure') {
+    if (parts.length >= 3 && (parts[1].toLowerCase() === 'storage' || parts[1].toLowerCase() === 'mgmt')) {
+      return `azure.${parts[1].toLowerCase()}.${parts[2].toLowerCase()}`;
+    }
+    if (parts.length >= 2) {
+      return `azure.${parts[1].toLowerCase()}`;
+    }
+    return 'azure';
+  }
+
+  if (p0 === 'opentelemetry') {
+    if (parts.length >= 3 && parts[1].toLowerCase() === 'instrumentation') {
+      return `opentelemetry.instrumentation.${parts[2].toLowerCase()}`;
+    }
+    if (parts.length >= 2) {
+      return `opentelemetry.${parts[1].toLowerCase()}`;
+    }
+    return 'opentelemetry';
+  }
+
+  return p0;
+}
+
 export function extractPythonImports(sourceCode, filePath = '') {
   const packages = new Map();
   const cleanCode = stripDocstrings(sourceCode);
   const rawLines = cleanCode.split('\n');
 
-  // Strip inline comments outside string literals and merge backslash line continuations
+  // Strip inline comments outside string literals and merge backslash & parenthesis continuations
   const processedLines = [];
   let pendingText = '';
   let startLineNum = 1;
+  let parenDepth = 0;
 
   for (let i = 0; i < rawLines.length; i++) {
     let line = rawLines[i];
@@ -34,6 +73,10 @@ export function extractPythonImports(sourceCode, filePath = '') {
       } else if (ch === '#') {
         commentIdx = c;
         break;
+      } else if (ch === '(') {
+        parenDepth++;
+      } else if (ch === ')' && parenDepth > 0) {
+        parenDepth--;
       }
     }
 
@@ -42,15 +85,18 @@ export function extractPythonImports(sourceCode, filePath = '') {
     }
 
     const trimmedEnd = line.trimEnd();
-    if (trimmedEnd.endsWith('\\')) {
+    const hasBackslash = trimmedEnd.endsWith('\\');
+    const cleanChunk = hasBackslash ? trimmedEnd.slice(0, -1) : trimmedEnd;
+
+    if (hasBackslash || parenDepth > 0) {
       if (!pendingText) startLineNum = i + 1;
-      pendingText += trimmedEnd.slice(0, -1) + ' ';
+      pendingText += cleanChunk + ' ';
     } else {
       if (pendingText) {
-        processedLines.push({ text: pendingText + trimmedEnd, lineNum: startLineNum });
+        processedLines.push({ text: (pendingText + cleanChunk).trim(), lineNum: startLineNum });
         pendingText = '';
       } else {
-        processedLines.push({ text: trimmedEnd, lineNum: i + 1 });
+        processedLines.push({ text: cleanChunk.trim(), lineNum: i + 1 });
       }
     }
   }
@@ -59,21 +105,39 @@ export function extractPythonImports(sourceCode, filePath = '') {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // from foo.bar import baz
-    let fromMatch;
-    PY_FROM_IMPORT.lastIndex = 0;
-    if ((fromMatch = PY_FROM_IMPORT.exec(line)) !== null) {
+    // from foo.bar import baz, qux
+    let fromMatch = PY_FROM_IMPORT.exec(line);
+    if (fromMatch) {
       const modulePath = fromMatch[1];
+      const itemsRaw = fromMatch[2];
       if (!modulePath.startsWith('.')) {
-        const rootPkg = modulePath.split('.')[0].toLowerCase();
-        if (rootPkg && !packages.has(rootPkg)) {
-          packages.set(rootPkg, {
-            name: rootPkg,
-            ecosystem: 'pypi',
-            file: filePath,
-            line: lineNum,
-            raw: modulePath
-          });
+        const parts = modulePath.split('.');
+        const p0 = parts[0].toLowerCase();
+        let targetPkgs = [];
+
+        if (p0 === 'google' && parts.length === 2 && parts[1].toLowerCase() === 'cloud') {
+          const items = itemsRaw.replace(/[\(\)]/g, '').split(',').map(s => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
+          targetPkgs = items.map(it => `google.cloud.${it.toLowerCase()}`);
+        } else if (p0 === 'azure' && parts.length === 2 && (parts[1].toLowerCase() === 'storage' || parts[1].toLowerCase() === 'mgmt')) {
+          const items = itemsRaw.replace(/[\(\)]/g, '').split(',').map(s => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
+          targetPkgs = items.map(it => `azure.${parts[1].toLowerCase()}.${it.toLowerCase()}`);
+        } else if (p0 === 'opentelemetry' && parts.length === 2 && parts[1].toLowerCase() === 'instrumentation') {
+          const items = itemsRaw.replace(/[\(\)]/g, '').split(',').map(s => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
+          targetPkgs = items.map(it => `opentelemetry.instrumentation.${it.toLowerCase()}`);
+        } else {
+          targetPkgs = [getPythonRootModule(modulePath)];
+        }
+
+        for (const rootPkg of targetPkgs) {
+          if (rootPkg && !packages.has(rootPkg)) {
+            packages.set(rootPkg, {
+              name: rootPkg,
+              ecosystem: 'pypi',
+              file: filePath,
+              line: lineNum,
+              raw: modulePath
+            });
+          }
         }
       }
     }
@@ -86,7 +150,7 @@ export function extractPythonImports(sourceCode, filePath = '') {
       for (const item of rawList) {
         const cleanItem = item.trim().split(/\s+as\s+/)[0].trim();
         if (cleanItem && !cleanItem.startsWith('.')) {
-          const rootPkg = cleanItem.split('.')[0].toLowerCase();
+          const rootPkg = getPythonRootModule(cleanItem);
           if (rootPkg && !packages.has(rootPkg)) {
             packages.set(rootPkg, {
               name: rootPkg,
@@ -106,7 +170,7 @@ export function extractPythonImports(sourceCode, filePath = '') {
     while ((dynMatch = PY_DYNAMIC_IMPORT.exec(line)) !== null) {
       const rawModule = dynMatch[1].trim();
       if (rawModule && !rawModule.startsWith('.')) {
-        const rootPkg = rawModule.split('.')[0].toLowerCase();
+        const rootPkg = getPythonRootModule(rawModule);
         if (rootPkg && !packages.has(rootPkg)) {
           packages.set(rootPkg, {
             name: rootPkg,

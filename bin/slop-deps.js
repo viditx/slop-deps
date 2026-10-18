@@ -16,7 +16,7 @@ USAGE:
 OPTIONS:
   -d, --dir <path>    Specify directory to scan (default: current working directory)
   --json              Output findings as raw JSON (ideal for CI/CD pipelines)
-  --strict            Exit with code 2 if network errors or unresolved warnings occur
+  --strict            Exit with code 2 if suspicious packages, network errors, or warnings occur
   -v, --version       Display version number
   -h, --help          Display this help message
 
@@ -37,9 +37,15 @@ const isJson = args.includes('--json');
 const isStrict = args.includes('--strict');
 let targetDir = process.cwd();
 
-const dirIdx = args.findIndex(a => a === '--dir' || a === '-d');
-if (dirIdx !== -1 && args[dirIdx + 1]) {
-  targetDir = path.resolve(process.cwd(), args[dirIdx + 1]);
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === '--dir' || arg === '-d') {
+    if (args[i + 1]) targetDir = path.resolve(process.cwd(), args[++i]);
+  } else if (arg.startsWith('--dir=')) {
+    targetDir = path.resolve(process.cwd(), arg.slice(6));
+  } else if (arg.startsWith('-d=')) {
+    targetDir = path.resolve(process.cwd(), arg.slice(3));
+  }
 }
 
 async function run() {
@@ -73,7 +79,7 @@ async function run() {
 
   if (stats.critical > 0) {
     process.exit(1);
-  } else if (isStrict && stats.warn > 0) {
+  } else if (isStrict && (stats.suspicious > 0 || stats.warn > 0)) {
     process.exit(2);
   } else {
     process.exit(0);

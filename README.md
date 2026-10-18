@@ -68,10 +68,10 @@ Neither package exists on npm. **Here is how attackers exploit this:**
 ## 🚀 Key Features
 
 * ⚡ **Zero Runtime Dependencies:** Built strictly on native Node.js 18+ APIs (`fetch`, `fs/promises`). No bloat, no 50-package dependency trees.
-* 🌐 **Multi-Ecosystem:** Scans JavaScript, TypeScript, React (JSX/TSX), Python (`.py`), and manifests (`package.json`, `requirements*.txt`, `pyproject.toml`).
-* 📦 **Monorepo & Workspace Aware:** Automatically ignores local `workspace:*`, `file:`, `link:`, and git dependencies in `package.json`, preventing false positives in Turborepo, Nx, and pnpm monorepos.
-* 🐍 **Smart Python Dist Mapping:** Maps top canonical Python import names (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`, `sklearn` → `scikit-learn`, etc.) and ignores local module trees and docstrings.
-* 🎯 **Smart Built-in Filtering:** Automatically ignores standard Node.js (`fs`, `path`, `crypto`) and Python (`os`, `sys`, `json`, `__future__`, `_thread`) built-in modules.
+* 🌐 **Multi-Ecosystem:** Scans JavaScript, TypeScript, React (JSX/TSX), Vue (`.vue`), Svelte (`.svelte`), Astro (`.astro`), Python (`.py`, `.pyi`), and manifests (`package.json`, `requirements*.txt`, `pyproject.toml`, `setup.cfg`).
+* 📦 **Monorepo & Workspace Aware:** Automatically discovers internal workspace packages and ignores local `workspace:*`, `file:`, `link:`, and git dependencies in `package.json`, preventing false positives in Turborepo, Nx, and pnpm monorepos.
+* 🐍 **Smart Python Dist & Namespace Mapping:** Maps top canonical Python import names (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`, `pkg_resources` → `setuptools`, `win32com` → `pywin32`) and PEP 420 namespace packages (`google.cloud.*`, `azure.*`, `opentelemetry.*`).
+* 🎯 **Smart Built-in & Alias Filtering:** Automatically ignores standard Node.js (`fs`, `path`, `crypto`, `node:*`) and Python (`os`, `sys`, `json`, `__future__`, `_thread`) built-ins, SvelteKit (`$app`, `$lib`), Nuxt (`@@/`, `~~/`), and `tsconfig.json` path aliases.
 * 🚦 **Fail-Closed CI/CD Design:** Returns `exit 1` on critical hallucinations, `exit 2` on missing directories or network errors, and `exit 0` on clean verification.
 
 ---

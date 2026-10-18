@@ -4,6 +4,7 @@ import { scanDirectory } from '../src/index.js';
 import { extractJsImports } from '../src/extractors/js-ts.js';
 import { extractPackageJson, extractPyProjectToml, extractSetupCfg } from '../src/extractors/manifests.js';
 import { extractPythonImports } from '../src/extractors/python.js';
+import { resolvePyPiDistributionName } from '../src/pypi-map.js';
 
 async function run() {
   console.log('🧪 Running slop-deps test suite...\n');
@@ -160,6 +161,45 @@ async function run() {
   assert.ok(cfgNames.has('urllib3'));
   assert.ok(cfgNames.has('pytest'));
   console.log('  ✔ PASS: setup.cfg dependencies extracted\n');
+
+  // Test 10: Python PEP 420 Namespace and canonical mappings
+  console.log('Test 10: Python PEP 420 Namespace and canonical distribution mapping');
+  assert.equal(resolvePyPiDistributionName('google.cloud.storage'), 'google-cloud-storage');
+  assert.equal(resolvePyPiDistributionName('google.cloud.bigquery'), 'google-cloud-bigquery');
+  assert.equal(resolvePyPiDistributionName('google.protobuf'), 'protobuf');
+  assert.equal(resolvePyPiDistributionName('azure.storage.blob'), 'azure-storage-blob');
+  assert.equal(resolvePyPiDistributionName('azure.identity'), 'azure-identity');
+  assert.equal(resolvePyPiDistributionName('pkg_resources'), 'setuptools');
+  assert.equal(resolvePyPiDistributionName('win32com'), 'pywin32');
+  assert.equal(resolvePyPiDistributionName('pythoncom'), 'pywin32');
+  assert.equal(resolvePyPiDistributionName('cryptodome'), 'pycryptodomex');
+  assert.equal(resolvePyPiDistributionName('tortoise'), 'tortoise-orm');
+
+  const nsPySample = `
+    from google.cloud import storage
+    from google.protobuf import message
+    from azure.identity import DefaultAzureCredential
+    import win32com.client
+    import pkg_resources
+  `;
+  const nsResult = extractPythonImports(nsPySample, 'ns.py');
+  const nsNames = nsResult.map(p => resolvePyPiDistributionName(p.name));
+  assert.ok(nsNames.includes('google-cloud-storage'), 'Google Cloud service must resolve to google-cloud-storage');
+  assert.ok(nsNames.includes('protobuf'), 'Google protobuf must resolve to protobuf');
+  assert.ok(nsNames.includes('azure-identity'), 'Azure identity must resolve to azure-identity');
+  assert.ok(nsNames.includes('pywin32'), 'win32com must resolve to pywin32');
+  assert.ok(nsNames.includes('setuptools'), 'pkg_resources must resolve to setuptools');
+  console.log('  ✔ PASS: Python PEP 420 namespace packages and Windows/tooling imports mapped\n');
+
+  // Test 11: Nuxt root aliases and path alias handling
+  console.log('Test 11: Nuxt root aliases (@@/ and ~~)');
+  const nuxtSample = `
+    import Header from '@@/components/Header';
+    import Footer from '~~/components/Footer';
+  `;
+  const nuxtResult = extractJsImports(nuxtSample, 'nuxt.vue');
+  assert.equal(nuxtResult.length, 0, 'Nuxt @@ and ~~ root aliases must not be flagged as external packages');
+  console.log('  ✔ PASS: Nuxt root aliases ignored cleanly\n');
 
   console.log('🎉 All test assertions passed successfully!');
 }

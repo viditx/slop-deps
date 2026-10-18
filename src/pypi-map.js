@@ -16,6 +16,7 @@ export const PYPI_IMPORT_TO_DIST = new Map([
   ['magic', 'python-magic'],
   ['fitz', 'PyMuPDF'],
   ['crypto', 'pycryptodome'],
+  ['cryptodome', 'pycryptodomex'],
   ['discord', 'discord.py'],
   ['telegram', 'python-telegram-bot'],
   ['slack_sdk', 'slack-sdk'],
@@ -27,6 +28,10 @@ export const PYPI_IMPORT_TO_DIST = new Map([
   ['win32api', 'pywin32'],
   ['win32con', 'pywin32'],
   ['win32gui', 'pywin32'],
+  ['win32com', 'pywin32'],
+  ['pythoncom', 'pywin32'],
+  ['pkg_resources', 'setuptools'],
+  ['tortoise', 'tortoise-orm'],
   ['opengl', 'PyOpenGL'],
   ['websocket', 'websocket-client'],
   ['attr', 'attrs'],
@@ -39,5 +44,26 @@ export const PYPI_IMPORT_TO_DIST = new Map([
 
 export function resolvePyPiDistributionName(importName) {
   const lower = importName.toLowerCase();
-  return PYPI_IMPORT_TO_DIST.get(lower) || importName;
+  if (PYPI_IMPORT_TO_DIST.has(lower)) {
+    return PYPI_IMPORT_TO_DIST.get(lower);
+  }
+
+  // PEP 420 namespace packages: Google Cloud, Azure, OpenTelemetry
+  if (lower.startsWith('google.cloud.')) {
+    return `google-cloud-${lower.slice(13).replace(/_/g, '-')}`;
+  }
+  if (lower === 'google.protobuf') {
+    return 'protobuf';
+  }
+  if (lower.startsWith('google.')) {
+    return `google-${lower.slice(7).replace(/_/g, '-')}`;
+  }
+  if (lower.startsWith('azure.')) {
+    return lower.replace(/\./g, '-');
+  }
+  if (lower.startsWith('opentelemetry.')) {
+    return lower.replace(/\./g, '-');
+  }
+
+  return importName;
 }

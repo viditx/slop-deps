@@ -94,10 +94,11 @@ export function printResults(findings, stats) {
 
   if (critical.length > 0) {
     console.log(`  ${c.bgRed}${c.white}${c.bold} ✖ SECURITY CHECK FAILED ${c.reset} ${c.red}Fix hallucinated packages before pushing!${c.reset}\n`);
-  } else if (high.length > 0) {
-    console.log(`  ${c.bgYellow}${c.white}${c.bold} ⚠ PASSED WITH WARNINGS ${c.reset} ${c.yellow}Check newly registered dependencies.${c.reset}\n`);
-  } else if (warn.length > 0) {
-    console.log(`  ${c.bgYellow}${c.white}${c.bold} ⚠ PASSED WITH WARNINGS ${c.reset} ${c.yellow}Unresolved imports or network errors — rerun with --strict to fail on these.${c.reset}\n`);
+  } else if (high.length > 0 || warn.length > 0) {
+    const reasons = [];
+    if (high.length > 0) reasons.push(`${high.length} suspicious`);
+    if (warn.length > 0) reasons.push(`${warn.length} unresolved/network`);
+    console.log(`  ${c.bgYellow}${c.white}${c.bold} ⚠ PASSED WITH WARNINGS ${c.reset} ${c.yellow}Review warnings (${reasons.join(', ')}). Rerun with --strict to enforce in CI.${c.reset}\n`);
   } else {
     console.log(`  ${c.bgGreen}${c.white}${c.bold} ✔ ALL DEPENDENCIES VERIFIED ${c.reset} ${c.green}Zero hallucinated packages detected.${c.reset}\n`);
   }

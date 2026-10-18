@@ -1,25 +1,28 @@
 const CACHE = new Map();
+const IN_FLIGHT = new Map();
 
 export async function checkNpmPackage(pkgName) {
   if (CACHE.has(pkgName)) return CACHE.get(pkgName);
+  if (IN_FLIGHT.has(pkgName)) return IN_FLIGHT.get(pkgName);
 
-  // Encode scoped packages properly: @org/pkg -> @org%2Fpkg
-  const encodedName = pkgName.startsWith('@') 
-    ? `@${pkgName.slice(1).replace('/', '%2F')}` 
-    : pkgName;
+  const promise = (async () => {
+    // Encode scoped packages properly: @org/pkg -> @org%2Fpkg
+    const encodedName = pkgName.startsWith('@') 
+      ? `@${pkgName.slice(1).replace('/', '%2F')}` 
+      : pkgName;
 
-  const url = `https://registry.npmjs.org/${encodedName}`;
+    const url = `https://registry.npmjs.org/${encodedName}`;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6000);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
 
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
 
     if (res.status === 404) {
       const result = {
@@ -82,32 +85,40 @@ export async function checkNpmPackage(pkgName) {
       message = `Created recently (${ageDays}d ago) with only ${versions.length} release(s). Review carefully.`;
     }
 
-    const result = {
-      name: pkgName,
-      ecosystem: 'npm',
-      status,
-      risk,
-      exists: true,
-      ageDays,
-      versionsCount: versions.length,
-      latestVersion: data['dist-tags']?.latest || versions[versions.length - 1] || 'none',
-      description: data.description || '',
-      message
-    };
-    CACHE.set(pkgName, result);
-    return result;
-  } catch (err) {
-    const result = {
-      name: pkgName,
-      ecosystem: 'npm',
-      status: 'NETWORK_ERROR',
-      risk: 'WARN',
-      exists: null,
-      message: `Failed to query npm: ${err.message}`
-    };
-    CACHE.set(pkgName, result);
+    return {
+        name: pkgName,
+        ecosystem: 'npm',
+        status,
+        risk,
+        exists: true,
+        ageDays,
+        versionsCount: versions.length,
+        latestVersion: data['dist-tags']?.latest || versions[versions.length - 1] || 'none',
+        description: data.description || '',
+        message
+      };
+    } catch (err) {
+      return {
+        name: pkgName,
+        ecosystem: 'npm',
+        status: 'NETWORK_ERROR',
+        risk: 'WARN',
+        exists: null,
+        message: `Failed to query npm: ${err.message}`
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+
+  IN_FLIGHT.set(pkgName, promise);
+  try {
+    const result = await promise;
+    if (result.status !== 'NETWORK_ERROR') {
+      CACHE.set(pkgName, result);
+    }
     return result;
   } finally {
-    clearTimeout(timeout);
+    IN_FLIGHT.delete(pkgName);
   }
 }
