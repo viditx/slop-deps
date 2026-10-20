@@ -8,7 +8,8 @@ export const NODE_BUILTINS = new Set([
   'timers/promises', 'tls', 'trace_events', 'tty', 'url', 'util',
   'util/types', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib',
   'test', 'assert/strict', 'dns/promises', 'inspector/promises',
-  'sqlite', 'stream/consumers', 'readline/promises', 'test/reporters', 'sea'
+  'sqlite', 'stream/consumers', 'readline/promises', 'test/reporters', 'sea',
+  'sidecar_sdk'
 ]);
 
 export const PYTHON_BUILTINS = new Set([
@@ -44,6 +45,8 @@ export const PYTHON_BUILTINS = new Set([
   'wsgiref', 'xdrlib', 'xml', 'xmlrpc', 'zipapp', 'zipfile', 'zipimport',
   'zlib', 'zoneinfo', 'tomllib',
   'pip', 'setuptools', 'antigravity',
+  'bmesh', 'bpy', 'mathutils', 'gpu', 'aud', 'sidecar_sdk',
+  'and', 'or', 'in', 'not', 'python_version', 'platform_system', 'os_name',
   '__future__', '__main__'
 ]);
 

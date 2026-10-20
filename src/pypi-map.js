@@ -39,15 +39,36 @@ export const PYPI_IMPORT_TO_DIST = new Map([
   ['levenshtein', 'Levenshtein'],
   ['psycopg2', 'psycopg2-binary'],
   ['pydantic_core', 'pydantic-core'],
+  ['pydantic_settings', 'pydantic-settings'],
   ['grpc', 'grpcio'],
   ['mysqldb', 'mysqlclient'],
-  ['wx', 'wxPython']
+  ['wx', 'wxPython'],
+  ['llama_cpp', 'llama-cpp-python'],
+  ['appium', 'Appium-Python-Client'],
+  ['uuid_extensions', 'uuid7'],
+  ['traceloop', 'traceloop-sdk'],
+  ['pinecone', 'pinecone-client'],
+  ['qdrant_client', 'qdrant-client'],
+  ['sentence_transformers', 'sentence-transformers'],
+  ['huggingface_hub', 'huggingface-hub'],
+  ['playwright', 'playwright'],
+  ['googleapiclient', 'google-api-python-client']
 ]);
 
 export function resolvePyPiDistributionName(importName) {
   const lower = importName.toLowerCase();
   if (PYPI_IMPORT_TO_DIST.has(lower)) {
     return PYPI_IMPORT_TO_DIST.get(lower);
+  }
+
+  // Windows pywin32 modules (win32api, win32evtlog, win32gui, pythoncom, etc.)
+  if (lower.startsWith('win32') || lower === 'pythoncom') {
+    return 'pywin32';
+  }
+
+  // Google authentication and APIs
+  if (lower.startsWith('google.oauth2') || lower.startsWith('google.auth')) {
+    return 'google-auth';
   }
 
   // PEP 420 namespace packages: Google Cloud, Google AI, Azure, OpenTelemetry

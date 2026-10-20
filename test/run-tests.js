@@ -320,7 +320,7 @@ async function run() {
 
   const vResult = spawnSync(process.execPath, [binPath, '--version'], { encoding: 'utf-8' });
   assert.equal(vResult.status, 0, '--version must exit 0');
-  assert.ok(vResult.stdout.includes('1.0.0'), '--version must output version');
+  assert.ok(vResult.stdout.includes('1.1.0'), '--version must output version');
 
   const invResult = spawnSync(process.execPath, [binPath, '--unknown-flag'], { encoding: 'utf-8' });
   assert.equal(invResult.status, 2, 'Unrecognized option must exit 2');
@@ -332,6 +332,34 @@ async function run() {
   assert.equal(nonExistDir.status, 2, 'Non-existent directory must fail-closed with exit 2');
 
   console.log('  ✔ PASS: CLI flags, fail-closed exits, and argument validation verified\n');
+
+  // Test 19: PEP 508 marker isolation and audit canonical mappings
+  console.log('Test 19: PEP 508 marker isolation, runtime builtins, and canonical mappings');
+  const pep508Toml = `
+    [project]
+    dependencies = [
+      "pydantic >= 2.0; python_version >= '3.10' and platform_system == 'Linux'",
+      "typing-extensions >= 4.0; os_name == 'posix' or sys_platform == 'darwin'"
+    ]
+  `;
+  const pep508Result = extractPyProjectToml(pep508Toml);
+  const pep508Names = new Set(pep508Result.map(p => p.name));
+  assert.ok(pep508Names.has('pydantic'));
+  assert.ok(pep508Names.has('typing-extensions'));
+  assert.ok(!pep508Names.has('and'), 'Marker boolean "and" must not be extracted');
+  assert.ok(!pep508Names.has('or'), 'Marker boolean "or" must not be extracted');
+  assert.ok(!pep508Names.has('Linux'), 'Marker operand "Linux" must not be extracted');
+
+  assert.equal(resolvePyPiDistributionName('llama_cpp'), 'llama-cpp-python');
+  assert.equal(resolvePyPiDistributionName('appium'), 'Appium-Python-Client');
+  assert.equal(resolvePyPiDistributionName('uuid_extensions'), 'uuid7');
+  assert.equal(resolvePyPiDistributionName('google.oauth2'), 'google-auth');
+  assert.equal(resolvePyPiDistributionName('google.auth.transport'), 'google-auth');
+  assert.equal(resolvePyPiDistributionName('googleapiclient'), 'google-api-python-client');
+  assert.ok(isBuiltin('sidecar_sdk', 'npm'), 'sidecar_sdk must be recognized as Antigravity host builtin in JS/npm');
+  assert.ok(isBuiltin('bmesh', 'pypi'), 'bmesh must be recognized as Blender builtin');
+  assert.ok(isBuiltin('sidecar_sdk', 'pypi'), 'sidecar_sdk must be recognized as Antigravity host builtin');
+  console.log('  ✔ PASS: PEP 508 markers, dynamic pywin32, Google auth/APIs, and host builtins verified\n');
 
   console.log('🎉 All test assertions passed successfully!');
 }

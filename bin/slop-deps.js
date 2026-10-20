@@ -29,7 +29,7 @@ EXIT CODES:
 }
 
 if (args.includes('--version') || args.includes('-v')) {
-  console.log('1.0.0');
+  console.log('1.1.0');
   process.exit(0);
 }
 

@@ -33,21 +33,31 @@ async function mapConcurrent(items, limit, fn) {
 }
 
 async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir = dir) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    // Gracefully skip unreadable or protected directories (EPERM, EACCES, ENOENT, etc.)
+    return fileList;
+  }
 
   for (const entry of entries) {
     if (IGNORED_DIRS.has(entry.name)) continue;
     const fullPath = path.join(dir, entry.name);
 
-    if (entry.isDirectory()) {
-      if (dirNames) {
-        dirNames.add(entry.name.toLowerCase());
-        const rel = path.relative(rootDir, fullPath).replace(/\\/g, '/').toLowerCase();
-        dirNames.add(rel);
+    try {
+      if (entry.isDirectory()) {
+        if (dirNames) {
+          dirNames.add(entry.name.toLowerCase());
+          const rel = path.relative(rootDir, fullPath).replace(/\\/g, '/').toLowerCase();
+          dirNames.add(rel);
+        }
+        await getFilesRecursively(fullPath, fileList, dirNames, rootDir);
+      } else if (entry.isFile()) {
+        fileList.push(fullPath);
       }
-      await getFilesRecursively(fullPath, fileList, dirNames, rootDir);
-    } else if (entry.isFile()) {
-      fileList.push(fullPath);
+    } catch {
+      continue;
     }
   }
 
@@ -112,6 +122,14 @@ export async function scanDirectory(targetDir = process.cwd()) {
   const dirNames = new Set();
   const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir);
   const pathAliases = await loadPathAliases(targetDir);
+
+  for (const file of allFiles) {
+    const b = path.basename(file).toLowerCase();
+    if (b === 'tsconfig.json' || b === 'jsconfig.json' || (b.startsWith('tsconfig.') && b.endsWith('.json'))) {
+      const subAliases = await loadPathAliases(path.dirname(file));
+      for (const a of subAliases) pathAliases.add(a);
+    }
+  }
 
   // Monorepo workspace packages and local Python modules
   const localWorkspacePackages = new Set();

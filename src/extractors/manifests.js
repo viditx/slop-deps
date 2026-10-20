@@ -124,14 +124,19 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
   let inDependenciesArray = false;
 
   function parseTomlArrayItems(text, lineNum) {
-    const itemMatches = text.matchAll(/["']([^"']+)["']/g);
+    const itemMatches = text.matchAll(/(?:"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)')/g);
     for (const m of itemMatches) {
-      const spec = m[1].trim();
+      const spec = (m[1] !== undefined ? m[1] : m[2]).trim();
       if (!spec || spec.startsWith('-') || spec.includes('://')) continue;
-      const nameMatch = spec.match(/^([a-zA-Z0-9_\-\.]+)/);
+
+      // Strip PEP 508 environment markers (everything after semicolon)
+      const semicolonIdx = spec.indexOf(';');
+      const cleanSpec = semicolonIdx !== -1 ? spec.slice(0, semicolonIdx).trim() : spec;
+
+      const nameMatch = cleanSpec.match(/^([a-zA-Z0-9_\-\.]+)/);
       if (nameMatch) {
         const name = nameMatch[1].toLowerCase();
-        if (name && /[a-zA-Z0-9]/.test(name)) {
+        if (name && /[a-zA-Z0-9]/.test(name) && !['and', 'or', 'not', 'in'].includes(name)) {
           packages.push({
             name,
             raw: spec,
@@ -259,10 +264,12 @@ export function extractSetupCfg(content, filePath = 'setup.cfg') {
 
   function parseReqItem(item, lineNum) {
     if (!item || item.startsWith('-') || item.includes('://')) return;
-    const match = item.match(/^([a-zA-Z0-9_\-\.]+)/);
+    const semicolonIdx = item.indexOf(';');
+    const cleanItem = semicolonIdx !== -1 ? item.slice(0, semicolonIdx).trim() : item;
+    const match = cleanItem.match(/^([a-zA-Z0-9_\-\.]+)/);
     if (match) {
       const name = match[1].toLowerCase();
-      if (name && /[a-zA-Z0-9]/.test(name)) {
+      if (name && /[a-zA-Z0-9]/.test(name) && !['and', 'or', 'not', 'in'].includes(name)) {
         packages.push({
           name,
           raw: item,
@@ -298,7 +305,7 @@ export function extractPipfile(content, filePath = 'Pipfile') {
       const match = line.match(/^(?:["']([^"']+)["']|([a-zA-Z0-9_\-\.]+))\s*=/);
       if (match) {
         const name = (match[1] || match[2]).toLowerCase();
-        if (name && /[a-zA-Z0-9]/.test(name) && name !== 'python') {
+        if (name && /[a-zA-Z0-9]/.test(name) && name !== 'python' && !['and', 'or', 'not', 'in'].includes(name)) {
           packages.push({
             name,
             raw: line,
@@ -319,14 +326,16 @@ export function extractSetupPy(content, filePath = 'setup.py') {
   const listMatches = content.matchAll(/(?:install_requires|setup_requires|tests_require)\s*=\s*\[([\s\S]*?)\]/g);
   for (const m of listMatches) {
     const listBody = m[1];
-    const itemMatches = listBody.matchAll(/["']([^"']+)["']/g);
+    const itemMatches = listBody.matchAll(/(?:"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)')/g);
     for (const item of itemMatches) {
-      const spec = item[1].trim();
+      const spec = (item[1] !== undefined ? item[1] : item[2]).trim();
       if (!spec || spec.startsWith('-') || spec.includes('://')) continue;
-      const nameMatch = spec.match(/^([a-zA-Z0-9_\-\.]+)/);
+      const semicolonIdx = spec.indexOf(';');
+      const cleanSpec = semicolonIdx !== -1 ? spec.slice(0, semicolonIdx).trim() : spec;
+      const nameMatch = cleanSpec.match(/^([a-zA-Z0-9_\-\.]+)/);
       if (nameMatch) {
         const name = nameMatch[1].toLowerCase();
-        if (name && /[a-zA-Z0-9]/.test(name)) {
+        if (name && /[a-zA-Z0-9]/.test(name) && !['and', 'or', 'not', 'in'].includes(name)) {
           packages.push({
             name,
             raw: spec,
@@ -343,14 +352,16 @@ export function extractSetupPy(content, filePath = 'setup.py') {
     const dictBody = extrasMatch[1];
     const innerLists = dictBody.matchAll(/\[([\s\S]*?)\]/g);
     for (const inner of innerLists) {
-      const itemMatches = inner[1].matchAll(/["']([^"']+)["']/g);
+      const itemMatches = inner[1].matchAll(/(?:"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)')/g);
       for (const item of itemMatches) {
-        const spec = item[1].trim();
+        const spec = (item[1] !== undefined ? item[1] : item[2]).trim();
         if (!spec || spec.startsWith('-') || spec.includes('://')) continue;
-        const nameMatch = spec.match(/^([a-zA-Z0-9_\-\.]+)/);
+        const semicolonIdx = spec.indexOf(';');
+        const cleanSpec = semicolonIdx !== -1 ? spec.slice(0, semicolonIdx).trim() : spec;
+        const nameMatch = cleanSpec.match(/^([a-zA-Z0-9_\-\.]+)/);
         if (nameMatch) {
           const name = nameMatch[1].toLowerCase();
-          if (name && /[a-zA-Z0-9]/.test(name)) {
+          if (name && /[a-zA-Z0-9]/.test(name) && !['and', 'or', 'not', 'in'].includes(name)) {
             packages.push({
               name,
               raw: spec,

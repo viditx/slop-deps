@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>slop-deps — AI Dependency Sentinel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #F9F9F8;
+      --panel: #FFFFFF;
+      --panel-header: #F4F4F1;
+      --border: #E5E5DF;
+      --border-subtle: #EFEFEA;
+      --text: #17181A;
+      --text-muted: #646A73;
+      --accent: #D94E3B;
+    }
+
+    .dark {
+      --bg: #090A0E;
+      --panel: #0E1015;
+      --panel-header: #13151D;
+      --border: #1E222B;
+      --border-subtle: #161922;
+      --text: #EDEDEF;
+      --text-muted: #7E8695;
+      --accent: #E04C38;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      transition: background-color 0.15s ease, color 0.15s ease;
+      overflow: hidden;
+    }
+
+    .app-panel {
+      background: var(--panel);
+      border-color: var(--border);
+    }
+
+    .panel-bar {
+      background: var(--panel-header);
+      border-color: var(--border);
+    }
+
+    .tactile-btn {
+      transition: transform 60ms ease, background-color 100ms ease;
+    }
+    .tactile-btn:active {
+      transform: scale(0.98);
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(140, 140, 140, 0.25);
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(140, 140, 140, 0.4);
+    }
+  </style>
+</head>
+
+<body class="dark h-screen w-screen flex flex-col font-sans select-none">
+
+  <!-- Top App Bar (Edge to Edge, Clean Hairline) -->
+  <header class="h-11 w-full border-b border-stone-200 dark:border-[#1E222B] px-3.5 flex items-center justify-between panel-bar flex-shrink-0">
+    <div class="flex items-center gap-2.5">
+      <a href="#" class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded bg-[#D94E3B] text-white flex items-center justify-center flex-shrink-0">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+        </div>
+        <span class="font-bold text-xs tracking-tight text-stone-900 dark:text-stone-100">slop-deps</span>
+      </a>
+
+      <span class="text-stone-300 dark:text-stone-700 text-xs">/</span>
+      <span class="text-[11px] font-mono text-stone-500 dark:text-stone-400">supply-chain sentinel</span>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-2">
+      <button onclick="loadAttackSimulation()" class="tactile-btn px-2.5 py-1 rounded border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[11px] font-mono font-medium hover:bg-rose-500/15 flex items-center gap-1.5" title="Preview sample vulnerabilities">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        <span>Test Sample Vector</span>
+      </button>
+
+      <div class="h-3.5 w-px bg-stone-200 dark:bg-stone-800"></div>
+
+      <button onclick="toggleTheme()" class="tactile-btn p-1.5 rounded hover:bg-stone-200/50 dark:hover:bg-stone-800/50 text-stone-500 dark:text-stone-400" title="Toggle Theme">
+        <span id="themeSvgWrap">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </span>
+      </button>
+
+      <a href="https://github.com/viditx/slop-deps" target="_blank" class="tactile-btn p-1.5 rounded hover:bg-stone-200/50 dark:hover:bg-stone-800/50 text-stone-500 dark:text-stone-400" title="GitHub">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+        </svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Edge-to-Edge Split Workbench -->
+  <main class="flex-1 w-full flex flex-col md:flex-row overflow-hidden">
+    
+    <!-- LEFT PANEL: Source & Input (45% Width) -->
+    <section class="w-full md:w-[45%] h-full flex flex-col border-b md:border-b-0 md:border-r border-stone-200 dark:border-[#1E222B] app-panel flex-shrink-0">
+      
+      <!-- Left Panel Header Bar -->
+      <div class="h-9 px-3 border-b border-stone-200 dark:border-[#1E222B] flex items-center justify-between panel-bar text-xs">
+        <div class="flex items-center gap-1">
+          <button onclick="setTab('drop')" id="tab-drop" class="tactile-btn px-2.5 py-1 rounded font-medium bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900">
+            Drop Workspace
+          </button>
+          <button onclick="setTab('paste')" id="tab-paste" class="tactile-btn px-2.5 py-1 rounded font-medium text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">
+            Paste Code
+          </button>
+        </div>
+
+        <div class="text-[11px] font-mono text-stone-400 dark:text-stone-500">
+          AST &amp; Manifest Engine
+        </div>
+      </div>
+
+      <!-- Tab 1: Clean Dropzone Surface -->
+      <div id="panel-drop" class="flex-1 flex flex-col p-4 space-y-4 overflow-y-auto">
+        <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden" onchange="handleFolderSelect(this.files)">
+        <input type="file" id="fileInput" accept=".json,.toml,.txt,.js,.ts,.py,.cfg" class="hidden" onchange="handleFileSelect(this.files)">
+
+        <div id="dropZone" class="flex-1 min-h-[240px] border border-dashed border-stone-300 dark:border-[#262B36] hover:border-stone-500 dark:hover:border-stone-500 rounded bg-stone-50/40 dark:bg-[#0A0C10]/40 flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-colors space-y-3">
+          <div class="w-10 h-10 rounded bg-stone-200/50 dark:bg-[#161820] text-stone-600 dark:text-stone-300 flex items-center justify-center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              <line x1="12" y1="11" x2="12" y2="17"></line>
+              <polyline points="9 14 12 11 15 14"></polyline>
+            </svg>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">
+              Drag and drop workspace folder or manifest
+            </div>
+            <div class="text-[11px] text-stone-400 dark:text-stone-500 mt-0.5">
+              Traverses directories locally in browser memory. Zero files leave your machine.
+            </div>
+          </div>
+          
+          <div class="flex items-center gap-2 pt-1">
+            <button onclick="event.stopPropagation(); document.getElementById('folderInput').click()" class="tactile-btn px-3 py-1.5 rounded bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs font-medium">
+              Browse Folder
+            </button>
+            <button onclick="event.stopPropagation(); document.getElementById('fileInput').click()" class="tactile-btn px-3 py-1.5 rounded border border-stone-300 dark:border-stone-700 text-xs font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-[#161820]">
+              Browse File
+            </button>
+          </div>
+        </div>
+
+        <div class="text-[11px] font-mono text-stone-400 dark:text-stone-500 flex items-center justify-between px-1">
+          <span>Supported: package.json, pyproject.toml, requirements.txt, .js, .py, .ts</span>
+        </div>
+      </div>
+
+      <!-- Tab 2: Clean Paste Editor -->
+      <div id="panel-paste" class="flex-1 flex flex-col p-3 space-y-2.5 hidden">
+        <textarea id="codeTextarea" class="flex-1 w-full p-3 rounded bg-stone-50 dark:bg-[#0A0C10] border border-stone-200 dark:border-[#1E222B] text-xs font-mono text-stone-800 dark:text-stone-200 focus:outline-none focus:border-stone-400 dark:focus:border-stone-600 transition-colors placeholder:text-stone-500 resize-none leading-relaxed" placeholder="Paste JavaScript or Python imports here...&#10;&#10;import { motion } from 'framer-motion';&#10;import torch_super_attention&#10;require('react-native-hyper-animator');"></textarea>
+
+        <div class="flex items-center justify-between">
+          <button onclick="document.getElementById('codeTextarea').value = ''" class="tactile-btn text-xs font-mono text-stone-400 hover:text-stone-700 dark:hover:text-stone-200">
+            Clear
+          </button>
+          <button onclick="scanCodeSnippet()" class="tactile-btn px-3 py-1.5 rounded bg-[#D94E3B] hover:bg-[#C54231] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Scan Imports</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Left Panel Statusline -->
+      <div class="h-7 px-3 border-t border-stone-200 dark:border-[#1E222B] flex items-center justify-between text-[11px] font-mono text-stone-400 dark:text-stone-500 panel-bar flex-shrink-0">
+        <span>PEP 508 isolated • 54 canonical aliases</span>
+        <button onclick="clearAllData()" class="hover:text-stone-700 dark:hover:text-stone-200">Reset</button>
+      </div>
+
+    </section>
+
+    <!-- RIGHT PANEL: Sentinel Radar & Findings (55% Width) -->
+    <section class="w-full md:w-[55%] h-full flex flex-col app-panel flex-shrink-0">
+      
+      <!-- Right Panel Header Bar -->
+      <div class="h-9 px-3 border-b border-stone-200 dark:border-[#1E222B] flex items-center justify-between panel-bar text-xs">
+        
+        <!-- Filter Tabs -->
+        <div class="flex items-center gap-1">
+          <button onclick="setFilter('ALL')" id="filter-ALL" class="tactile-btn px-2 py-0.5 rounded font-medium bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900">
+            All <span id="badgeFilterAll" class="ml-1 opacity-75 font-mono text-[10px]">0</span>
+          </button>
+          <button onclick="setFilter('CRITICAL')" id="filter-CRITICAL" class="tactile-btn px-2 py-0.5 rounded font-medium text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+            Critical <span id="badgeFilterCritical" class="opacity-75 font-mono text-[10px]">0</span>
+          </button>
+          <button onclick="setFilter('SUSPICIOUS')" id="filter-SUSPICIOUS" class="tactile-btn px-2 py-0.5 rounded font-medium text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+            Suspicious <span id="badgeFilterSuspicious" class="opacity-75 font-mono text-[10px]">0</span>
+          </button>
+          <button onclick="setFilter('CLEAN')" id="filter-CLEAN" class="tactile-btn px-2 py-0.5 rounded font-medium text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            Verified <span id="badgeFilterClean" class="opacity-75 font-mono text-[10px]">0</span>
+          </button>
+        </div>
+
+        <!-- Search & Export -->
+        <div class="flex items-center gap-2">
+          <div class="relative">
+            <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="Filter..." class="w-28 sm:w-36 pl-6 pr-2 py-0.5 rounded bg-stone-100 dark:bg-[#0A0C10] border border-stone-200 dark:border-[#1E222B] text-xs font-mono text-stone-800 dark:text-stone-200 focus:outline-none focus:border-stone-400 transition-colors placeholder:text-stone-500">
+            <svg class="absolute left-2 top-1.5 text-stone-400" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+
+          <button onclick="downloadAuditJson()" class="tactile-btn p-1 rounded text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-[#161820]" title="Export JSON">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Scrollable Findings Stream -->
+      <div class="flex-1 overflow-y-auto divide-y divide-stone-100 dark:divide-[#161820]" id="findingsList">
+        <!-- Injected via JavaScript -->
+      </div>
+
+      <!-- Clean Initial State (When No Scan Has Run) -->
+      <div id="emptyState" class="flex-1 flex flex-col items-center justify-center p-8 text-center text-xs text-stone-400 dark:text-stone-500 space-y-2.5">
+        <div class="w-8 h-8 rounded bg-stone-100 dark:bg-[#14161C] flex items-center justify-center text-stone-400">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
+        <div class="space-y-1">
+          <div class="font-medium text-stone-700 dark:text-stone-300">Ready for inspection</div>
+          <div class="text-[11px] max-w-xs text-stone-400 dark:text-stone-500">
+            Drop your workspace folder or paste code on the left to verify packages against official registries.
+          </div>
+        </div>
+        <button onclick="loadAttackSimulation()" class="tactile-btn mt-2 px-3 py-1 rounded border border-stone-200 dark:border-stone-800 text-[11px] font-mono hover:bg-stone-100 dark:hover:bg-[#14161C] text-stone-600 dark:text-stone-400">
+          Load sample vector (8 packages)
+        </button>
+      </div>
+
+      <!-- Right Panel Statusline -->
+      <div class="h-7 px-3 border-t border-stone-200 dark:border-[#1E222B] flex items-center justify-between text-[11px] font-mono text-stone-400 dark:text-stone-500 panel-bar flex-shrink-0">
+        <div class="flex items-center gap-1.5">
+          <span>CLI:</span>
+          <span class="text-stone-300 dark:text-stone-400">npx slop-deps .</span>
+          <button onclick="copyToClipboard('npx slop-deps .', 'Copied!')" class="hover:text-stone-700 dark:hover:text-stone-200 ml-0.5">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+        </div>
+
+        <span>Registry: npm &amp; PyPI direct</span>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 rounded bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs shadow-lg transition-all transform translate-y-16 opacity-0 pointer-events-none">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+    <span id="toastMsg" class="font-medium font-mono text-[11px]">Notification</span>
+  </div>
+
+  <!-- Sentinel Engine Script -->
+  <script>
+    const NODE_BUILTINS = new Set([
+      'assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console',
+      'constants', 'crypto', 'dgram', 'diagnostics_channel', 'dns', 'domain',
+      'events', 'fs', 'fs/promises', 'http', 'http2', 'https', 'inspector',
+      'module', 'net', 'os', 'path', 'path/posix', 'path/win32', 'perf_hooks',
+      'process', 'punycode', 'querystring', 'readline', 'repl', 'stream',
+      'stream/promises', 'stream/consumers', 'stream/web', 'string_decoder',
+      'sys', 'timers', 'timers/promises', 'tls', 'trace_events', 'tty',
+      'url', 'util', 'util/types', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib',
+      'test', 'sea', 'sidecar_sdk'
+    ]);
+
+    const PYTHON_BUILTINS = new Set([
+      'abc', 'aifc', 'argparse', 'array', 'ast', 'asynchat', 'asyncio', 'asyncore',
+      'atexit', 'audioop', 'base64', 'bdb', 'binascii', 'binhex', 'bisect',
+      'builtins', 'bz2', 'calendar', 'cgi', 'cgitb', 'chunk', 'cmath', 'cmd',
+      'code', 'codecs', 'codeop', 'collections', 'colorsys', 'compileall',
+      'concurrent', 'configparser', 'contextlib', 'contextvars', 'copy', 'copyreg',
+      'cprofile', 'crypt', 'csv', 'ctypes', 'curses', 'dataclasses', 'datetime',
+      'dbm', 'decimal', 'difflib', 'dis', 'distutils', 'doctest', 'email',
+      'encodings', 'ensurepip', 'enum', 'errno', 'faulthandler', 'fcntl',
+      'filecmp', 'fileinput', 'fnmatch', 'fractions', 'ftplib', 'functools',
+      'gc', 'getopt', 'getpass', 'gettext', 'glob', 'graphlib', 'grp',
+      'gzip', 'hashlib', 'heapq', 'hmac', 'html', 'http', 'imaplib',
+      'imghdr', 'imp', 'importlib', 'inspect', 'io', 'ipaddress', 'itertools',
+      'json', 'keyword', 'lib2to3', 'linecache', 'locale', 'logging', 'lzma',
+      'mailbox', 'mailcap', 'marshal', 'math', 'mimetypes', 'mmap', 'modulefinder',
+      'msilib', 'msvcrt', 'multiprocessing', 'netrc', 'nis', 'nntplib',
+      'numbers', 'operator', 'optparse', 'os', 'ossaudiodev', 'pathlib',
+      'pdb', 'pickle', 'pickletools', 'pipes', 'pkgutil', 'platform', 'plistlib',
+      'poplib', 'posix', 'posixpath', 'pprint', 'profile', 'pstats', 'pty',
+      'pwd', 'py_compile', 'pyclbr', 'pydoc', 'queue', 'quopri', 'random',
+      're', 'readline', 'reprlib', 'resource', 'rlcompleter', 'runpy', 'sched',
+      'secrets', 'select', 'selectors', 'shelve', 'shlex', 'shutil', 'signal',
+      'site', 'smtpd', 'smtplib', 'sndhdr', 'socket', 'socketserver', 'spwd',
+      'sqlite3', 'ssl', 'stat', 'statistics', 'string', 'stringprep', 'struct',
+      'subprocess', 'sunau', 'symbol', 'symtable', 'sys', 'sysconfig', 'syslog',
+      'tabnanny', 'tarfile', 'telnetlib', 'tempfile', 'termios', 'test', 'textwrap',
+      'threading', 'time', 'timeit', 'tkinter', 'token', 'tokenize', 'trace',
+      'traceback', 'tracemalloc', 'tty', 'turtle', 'turtledemo', 'types',
+      'typing', 'unicodedata', 'unittest', 'urllib', 'uu', 'uuid', 'venv',
+      'warnings', 'wave', 'weakref', 'webbrowser', 'winreg', 'winsound',
+      'wsgiref', 'xdrlib', 'xml', 'xmlrpc', 'zipapp', 'zipfile', 'zipimport',
+      'zlib', 'zoneinfo', 'tomllib',
+      'pip', 'setuptools', 'antigravity',
+      'bmesh', 'bpy', 'mathutils', 'gpu', 'aud', 'sidecar_sdk',
+      'and', 'or', 'in', 'not', 'python_version', 'platform_system', 'os_name',
+      '__future__', '__main__'
+    ]);
+
+    const PYPI_IMPORT_TO_DIST = new Map([
+      ['pil', 'Pillow'],
+      ['yaml', 'PyYAML'],
+      ['cv2', 'opencv-python'],
+      ['sklearn', 'scikit-learn'],
+      ['bs4', 'beautifulsoup4'],
+      ['dateutil', 'python-dateutil'],
+      ['openssl', 'pyOpenSSL'],
+      ['dotenv', 'python-dotenv'],
+      ['jwt', 'PyJWT'],
+      ['serial', 'pyserial'],
+      ['git', 'GitPython'],
+      ['bio', 'biopython'],
+      ['magic', 'python-magic'],
+      ['fitz', 'PyMuPDF'],
+      ['crypto', 'pycryptodome'],
+      ['cryptodome', 'pycryptodomex'],
+      ['discord', 'discord.py'],
+      ['telegram', 'python-telegram-bot'],
+      ['slack_sdk', 'slack-sdk'],
+      ['docx', 'python-docx'],
+      ['pptx', 'python-pptx'],
+      ['jose', 'python-jose'],
+      ['dns', 'dnspython'],
+      ['usb', 'pyusb'],
+      ['win32api', 'pywin32'],
+      ['win32con', 'pywin32'],
+      ['win32gui', 'pywin32'],
+      ['win32com', 'pywin32'],
+      ['pythoncom', 'pywin32'],
+      ['pkg_resources', 'setuptools'],
+      ['tortoise', 'tortoise-orm'],
+      ['opengl', 'PyOpenGL'],
+      ['websocket', 'websocket-client'],
+      ['attr', 'attrs'],
+      ['multipart', 'python-multipart'],
+      ['levenshtein', 'Levenshtein'],
+      ['psycopg2', 'psycopg2-binary'],
+      ['pydantic_core', 'pydantic-core'],
+      ['pydantic_settings', 'pydantic-settings'],
+      ['grpc', 'grpcio'],
+      ['mysqldb', 'mysqlclient'],
+      ['wx', 'wxPython'],
+      ['llama_cpp', 'llama-cpp-python'],
+      ['appium', 'Appium-Python-Client'],
+      ['uuid_extensions', 'uuid7'],
+      ['traceloop', 'traceloop-sdk'],
+      ['pinecone', 'pinecone-client'],
+      ['qdrant_client', 'qdrant-client'],
+      ['sentence_transformers', 'sentence-transformers'],
+      ['huggingface_hub', 'huggingface-hub'],
+      ['playwright', 'playwright'],
+      ['googleapiclient', 'google-api-python-client']
+    ]);
+
+    function resolvePyPiDistributionName(importName) {
+      const lower = importName.toLowerCase();
+      if (PYPI_IMPORT_TO_DIST.has(lower)) return PYPI_IMPORT_TO_DIST.get(lower);
+      if (lower.startsWith('win32') || lower === 'pythoncom') return 'pywin32';
+      if (lower.startsWith('google.oauth2') || lower.startsWith('google.auth')) return 'google-auth';
+      if (lower.startsWith('google.cloud.')) return `google-cloud-${lower.slice(13).replace(/_/g, '-')}`;
+      if (lower.startsWith('google.ai.')) return `google-ai-${lower.slice(10).replace(/_/g, '-')}`;
+      if (lower === 'google.protobuf') return 'protobuf';
+      if (lower.startsWith('google.')) return `google-${lower.slice(7).replace(/_/g, '-')}`;
+      if (lower.startsWith('azure.')) return lower.replace(/\./g, '-');
+      if (lower.startsWith('opentelemetry.')) return lower.replace(/\./g, '-');
+      return importName;
+    }
+
+    function isBuiltin(pkgName, ecosystem) {
+      if (ecosystem === 'npm') {
+        const clean = pkgName.startsWith('node:') ? pkgName.slice(5) : pkgName;
+        return NODE_BUILTINS.has(clean);
+      }
+      if (ecosystem === 'pypi') {
+        const lower = pkgName.toLowerCase();
+        if (lower.startsWith('_')) return true;
+        return PYTHON_BUILTINS.has(lower);
+      }
+      return false;
+    }
+
+    function cleanPackageName(specifier) {
+      if (!specifier) return null;
+      let trimmed = specifier.trim();
+      const qIdx = trimmed.search(/[?#]/);
+      if (qIdx !== -1) trimmed = trimmed.slice(0, qIdx).trim();
+      if (!trimmed) return null;
+
+      if (
+        trimmed.startsWith('.') || trimmed.startsWith('/') ||
+        trimmed.startsWith('~') || trimmed.startsWith('~~') ||
+        trimmed.startsWith('#') || trimmed.startsWith('@/') ||
+        trimmed.startsWith('@@') || trimmed.startsWith('$')
+      ) return null;
+
+      if (trimmed.startsWith('npm:')) {
+        trimmed = trimmed.slice(4).trim();
+        if (trimmed.startsWith('@')) {
+          const parts = trimmed.split('/');
+          if (parts.length >= 2) return `${parts[0]}/${parts[1].split('@')[0]}`;
+        } else {
+          return trimmed.split('/')[0].split('@')[0];
+        }
+      }
+
+      if (/^[a-zA-Z][\w+.-]*:/.test(trimmed) && !trimmed.startsWith('node:')) return null;
+
+      if (trimmed.startsWith('@')) {
+        const parts = trimmed.split('/');
+        if (parts.length >= 2 && parts[1].trim()) return `${parts[0]}/${parts[1]}`;
+        return null;
+      }
+      return trimmed.split('/')[0];
+    }
+
+    function extractJsImports(code, filename = '') {
+      const results = [];
+      const cleanCode = code
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*/g, '');
+
+      const importRegex = /(?:^|\n)\s*(?:import|export)\s+(?:[\w*\s{},]*\s+from\s+)?['"]([^'"]+)['"]/g;
+      let match;
+      while ((match = importRegex.exec(cleanCode)) !== null) {
+        const pkg = cleanPackageName(match[1]);
+        if (pkg && !isBuiltin(pkg, 'npm')) {
+          results.push({ name: pkg, raw: match[1], ecosystem: 'npm', file: filename });
+        }
+      }
+
+      const reqRegex = /\b(?:require|import)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+      while ((match = reqRegex.exec(cleanCode)) !== null) {
+        const pkg = cleanPackageName(match[1]);
+        if (pkg && !isBuiltin(pkg, 'npm')) {
+          results.push({ name: pkg, raw: match[1], ecosystem: 'npm', file: filename });
+        }
+      }
+      return results;
+    }
+
+    function extractPythonImports(code, filename = '') {
+      const results = [];
+      const lines = code.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].split('#')[0].trim();
+        if (!line) continue;
+
+        let m = line.match(/^import\s+([a-zA-Z0-9_.,\s]+)/);
+        if (m) {
+          const mods = m[1].split(',').map(s => s.trim().split(/\s+as\s+/)[0].trim().split('.')[0]);
+          for (const mod of mods) {
+            if (mod && !isBuiltin(mod, 'pypi')) {
+              results.push({ name: mod, ecosystem: 'pypi', file: filename, line: i + 1 });
+            }
+          }
+          continue;
+        }
+
+        m = line.match(/^from\s+([a-zA-Z0-9_.]+)\s+import/);
+        if (m) {
+          const root = m[1].split('.')[0];
+          if (root && !isBuiltin(root, 'pypi')) {
+            results.push({ name: root, ecosystem: 'pypi', file: filename, line: i + 1 });
+          }
+        }
+      }
+      return results;
+    }
+
+    function extractPackageJson(content, filename = 'package.json') {
+      const results = [];
+      try {
+        const json = JSON.parse(content);
+        const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+        for (const sec of sections) {
+          if (json[sec] && typeof json[sec] === 'object') {
+            for (const [name, version] of Object.entries(json[sec])) {
+              const cleaned = cleanPackageName(name);
+              if (cleaned && !isBuiltin(cleaned, 'npm')) {
+                results.push({ name: cleaned, version: String(version), ecosystem: 'npm', file: filename, section: sec });
+              }
+            }
+          }
+        }
+      } catch {}
+      return results;
+    }
+
+    function extractRequirementsTxt(content, filename = 'requirements.txt') {
+      const results = [];
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.startsWith('#') || line.startsWith('-r') || line.startsWith('-i')) continue;
+        const spec = line.split('#')[0].split(';')[0].trim();
+        const m = spec.match(/^([a-zA-Z0-9_\-.]+)/);
+        if (m) {
+          const name = m[1];
+          if (!isBuiltin(name, 'pypi')) {
+            results.push({ name, raw: spec, ecosystem: 'pypi', file: filename, line: i + 1 });
+          }
+        }
+      }
+      return results;
+    }
+
+    function extractPyProjectToml(content, filename = 'pyproject.toml') {
+      const results = [];
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        const m = line.match(/^"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'/);
+        if (m) {
+          const raw = (m[1] || m[2] || '').trim();
+          const cleanSpec = raw.split(';')[0].trim();
+          const pkgMatch = cleanSpec.match(/^([a-zA-Z0-9_\-.]+)/);
+          if (pkgMatch) {
+            const name = pkgMatch[1];
+            if (!isBuiltin(name, 'pypi') && name !== 'and' && name !== 'or') {
+              results.push({ name, raw, ecosystem: 'pypi', file: filename, line: i + 1 });
+            }
+          }
+        }
+      }
+      return results;
+    }
+
+    async function verifyPackage(pkgRef) {
+      if (pkgRef.ecosystem === 'npm') {
+        try {
+          const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkgRef.name)}`, { method: 'GET' });
+          if (res.status === 404) {
+            return { ...pkgRef, risk: 'CRITICAL', status: 'HALLUCINATED', message: 'Package does not exist on npm.' };
+          }
+          if (res.ok) {
+            const data = await res.json();
+            const timeObj = data.time || {};
+            const createdStr = timeObj.created;
+            let ageDays = 9999;
+            if (createdStr) {
+              ageDays = Math.floor((Date.now() - new Date(createdStr).getTime()) / (1000 * 60 * 60 * 24));
+            }
+            const versionsCount = Object.keys(data.versions || {}).length;
+            if (ageDays < 30) {
+              return { ...pkgRef, risk: 'SUSPICIOUS', status: 'NEW_PACKAGE', ageDays, versionsCount, message: `Brand new package (${ageDays}d old).` };
+            }
+            return { ...pkgRef, risk: 'CLEAN', status: 'VERIFIED', ageDays, versionsCount, message: 'Verified package on npm.' };
+          }
+        } catch (e) {
+          return { ...pkgRef, risk: 'WARN', status: 'NETWORK_ERR', message: 'Network error connecting to npm.' };
+        }
+      }
+
+      if (pkgRef.ecosystem === 'pypi') {
+        const distName = resolvePyPiDistributionName(pkgRef.name);
+        try {
+          const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(distName)}/json`, { method: 'GET' });
+          if (res.status === 404) {
+            return { ...pkgRef, resolvedDist: distName, risk: 'CRITICAL', status: 'HALLUCINATED', message: `Distribution '${distName}' does not exist on PyPI.` };
+          }
+          if (res.ok) {
+            const data = await res.json();
+            const releases = data.releases || {};
+            const versionsCount = Object.keys(releases).length;
+            const uploadTime = data.urls?.[0]?.upload_time_iso_8601;
+            let ageDays = 9999;
+            if (uploadTime) {
+              ageDays = Math.floor((Date.now() - new Date(uploadTime).getTime()) / (1000 * 60 * 60 * 24));
+            }
+            if (ageDays < 30) {
+              return { ...pkgRef, resolvedDist: distName, risk: 'SUSPICIOUS', status: 'NEW_PACKAGE', ageDays, versionsCount, message: `Brand new package (${ageDays}d old).` };
+            }
+            return { ...pkgRef, resolvedDist: distName, risk: 'CLEAN', status: 'VERIFIED', ageDays, versionsCount, message: 'Verified distribution on PyPI.' };
+          }
+        } catch (e) {
+          return { ...pkgRef, resolvedDist: distName, risk: 'WARN', status: 'NETWORK_ERR', message: 'Network error connecting to PyPI.' };
+        }
+      }
+
+      return { ...pkgRef, risk: 'CLEAN', status: 'VERIFIED', message: 'Assumed verified' };
+    }
+
+    // State & UI
+    let allFindings = [];
+    let activeFilter = 'ALL';
+    let searchQuery = '';
+
+    window.toggleTheme = function() {
+      const isDark = document.body.classList.toggle('dark');
+      const wrap = document.getElementById('themeSvgWrap');
+      if (wrap) {
+        wrap.innerHTML = isDark 
+          ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'
+          : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+      }
+    };
+
+    window.setTab = function(tabName) {
+      ['drop', 'paste'].forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        const panel = document.getElementById(`panel-${t}`);
+        if (t === tabName) {
+          btn.className = 'tactile-btn px-2.5 py-1 rounded font-medium bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900';
+          panel.classList.remove('hidden');
+        } else {
+          btn.className = 'tactile-btn px-2.5 py-1 rounded font-medium text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100';
+          panel.classList.add('hidden');
+        }
+      });
+    };
+
+    window.setFilter = function(filter) {
+      activeFilter = filter;
+      ['ALL', 'CRITICAL', 'SUSPICIOUS', 'CLEAN'].forEach(f => {
+        const btn = document.getElementById(`filter-${f}`);
+        if (f === filter) {
+          btn.className = 'tactile-btn px-2 py-0.5 rounded font-medium bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 flex items-center gap-1';
+        } else {
+          btn.className = 'tactile-btn px-2 py-0.5 rounded font-medium text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 flex items-center gap-1';
+        }
+      });
+      renderFindings();
+    };
+
+    window.handleSearch = function(val) {
+      searchQuery = val.toLowerCase().trim();
+      renderFindings();
+    };
+
+    function renderFindings() {
+      const container = document.getElementById('findingsList');
+      const emptyState = document.getElementById('emptyState');
+      container.innerHTML = '';
+
+      let filtered = allFindings.filter(item => {
+        if (activeFilter !== 'ALL' && item.risk !== activeFilter) return false;
+        if (searchQuery) {
+          const matchName = item.name.toLowerCase().includes(searchQuery);
+          const matchFile = (item.file || '').toLowerCase().includes(searchQuery);
+          return matchName || matchFile;
+        }
+        return true;
+      });
+
+      document.getElementById('badgeFilterAll').innerText = allFindings.length;
+      document.getElementById('badgeFilterCritical').innerText = allFindings.filter(f => f.risk === 'CRITICAL').length;
+      document.getElementById('badgeFilterSuspicious').innerText = allFindings.filter(f => f.risk === 'SUSPICIOUS').length;
+      document.getElementById('badgeFilterClean').innerText = allFindings.filter(f => f.risk === 'CLEAN').length;
+
+      if (allFindings.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      if (filtered.length === 0) {
+        emptyState.classList.remove('hidden');
+        emptyState.querySelector('.font-medium').innerText = 'No matching packages';
+        emptyState.querySelector('.text-\\[11px\\]').innerText = 'Try clearing the search filter.';
+        return;
+      }
+      emptyState.classList.add('hidden');
+
+      filtered.forEach(item => {
+        const row = document.createElement('div');
+        const isCritical = item.risk === 'CRITICAL';
+        const isSuspicious = item.risk === 'SUSPICIOUS';
+
+        let statusClass = 'text-emerald-500 dark:text-emerald-400 bg-emerald-500/10';
+        let statusLabel = 'VERIFIED';
+        if (isCritical) {
+          statusClass = 'text-rose-600 dark:text-rose-400 bg-rose-500/10 font-bold';
+          statusLabel = '404 NOT FOUND';
+        } else if (isSuspicious) {
+          statusClass = 'text-amber-600 dark:text-amber-400 bg-amber-500/10 font-medium';
+          statusLabel = 'SUSPICIOUS';
+        }
+
+        const ecoSvg = item.ecosystem === 'npm'
+          ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="text-rose-500 opacity-80"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.981 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.474 0H1.763zM5.568 5.568h12.864v12.864H14.86V9.136h-3.428v9.296H5.568V5.568z"/></svg>'
+          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="text-blue-500 opacity-80"><path d="M11.912 0c-3.136 0-5.18.27-5.18.27l.135 2.565s1.956-.226 3.992-.226c2.404 0 2.456 1.107 2.456 2.457v1.077H8.082C5.35 6.143 3 8.396 3 11.233c0 2.825 2.378 4.673 5.082 4.673h1.834v-2.585H8.384c-1.464 0-2.433-.948-2.433-2.12 0-1.156.969-2.12 2.433-2.12h4.931c1.373 0 2.482-1.127 2.482-2.502V3.427C15.8 1.458 14.34 0 11.912 0zM8.91 1.77a.89.89 0 0 1 .892.89.89.89 0 0 1-.892.891.89.89 0 0 1-.89-.89.89.89 0 0 1 .89-.891zm3.178 6.087v2.585h1.531c1.464 0 2.433.948 2.433 2.12 0 1.156-.969 2.12-2.433 2.12H8.688c-1.373 0-2.482 1.127-2.482 2.502v3.355C6.206 22.51 7.666 24 10.094 24c3.136 0 5.18-.27 5.18-.27l-.135-2.565s-1.956.226-3.992.226c-2.404 0-2.456-1.107-2.456-2.457v-1.077h5.233C16.65 17.857 19 15.604 19 12.767c0-2.825-2.378-4.673-5.082-4.673h-1.83zm3.002 13.562a.89.89 0 0 1 .89-.89.89.89 0 0 1 .892.89.89.89 0 0 1-.892.891.89.89 0 0 1-.89-.891z"/></svg>';
+
+        const registryUrl = item.ecosystem === 'npm' 
+          ? `https://www.npmjs.com/package/${encodeURIComponent(item.name)}`
+          : `https://pypi.org/project/${encodeURIComponent(item.resolvedDist || item.name)}/`;
+
+        const fixCommand = item.ecosystem === 'npm'
+          ? `npm rm ${item.name}`
+          : `pip uninstall -y ${item.name}`;
+
+        row.className = 'px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-stone-50 dark:hover:bg-[#14161C] transition-colors';
+        row.innerHTML = `
+          <div class="flex items-start sm:items-center gap-2.5">
+            <div class="pt-0.5 sm:pt-0">
+              ${ecoSvg}
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-mono text-xs font-semibold text-stone-900 dark:text-stone-100">${escapeHtml(item.name)}</span>
+                <span class="text-[10px] font-mono px-1.5 py-0.2 rounded ${statusClass}">
+                  ${statusLabel}
+                </span>
+              </div>
+              <div class="text-[11px] text-stone-400 dark:text-stone-500 font-mono mt-0.5">
+                <span>${escapeHtml(item.file || 'snippet')}</span>
+                ${item.line ? `<span>:L${item.line}</span>` : ''}
+                ${item.section ? `<span> [${item.section}]</span>` : ''}
+                <span class="text-stone-300 dark:text-stone-700 mx-1">•</span>
+                <span class="text-stone-500 dark:text-stone-400">${escapeHtml(item.message)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1 self-end sm:self-auto text-xs">
+            <button onclick="copyToClipboard('${fixCommand}', 'Copied remediation command!')" class="tactile-btn px-2 py-0.5 rounded text-[11px] font-mono text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 hover:bg-stone-200/50 dark:hover:bg-stone-800/50 transition">
+              Copy Fix
+            </button>
+            <a href="${registryUrl}" target="_blank" class="tactile-btn p-1 rounded text-stone-400 hover:text-stone-800 dark:hover:text-stone-100 hover:bg-stone-200/50 dark:hover:bg-stone-800/50 transition" title="Inspect on registry">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7"></line>
+                <polyline points="7 7 17 7 17 17"></polyline>
+              </svg>
+            </a>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    // Demo Simulation (Only triggered on user demand!)
+    window.loadAttackSimulation = function() {
+      allFindings = [
+        {
+          name: 'react-native-hyper-animator',
+          ecosystem: 'npm',
+          file: 'src/MotionView.tsx',
+          line: 4,
+          risk: 'CRITICAL',
+          status: 'HALLUCINATED',
+          message: 'Package does not exist on npm.'
+        },
+        {
+          name: 'torch_super_attention',
+          ecosystem: 'pypi',
+          resolvedDist: 'torch_super_attention',
+          file: 'models/decoder.py',
+          line: 12,
+          risk: 'CRITICAL',
+          status: 'HALLUCINATED',
+          message: "Distribution absent from PyPI."
+        },
+        {
+          name: 'langchain-deepseek-enterprise',
+          ecosystem: 'npm',
+          file: 'package.json',
+          section: 'dependencies',
+          risk: 'CRITICAL',
+          status: 'HALLUCINATED',
+          message: 'Unregistered namespace on npm.'
+        },
+        {
+          name: 'fake-ai-internal-eval',
+          ecosystem: 'pypi',
+          resolvedDist: 'fake-ai-internal-eval',
+          file: 'requirements.txt',
+          line: 8,
+          risk: 'CRITICAL',
+          status: 'HALLUCINATED',
+          message: 'Non-existent PyPI distribution.'
+        },
+        {
+          name: 'express-async-shield',
+          ecosystem: 'npm',
+          file: 'server/app.js',
+          line: 3,
+          risk: 'SUSPICIOUS',
+          status: 'NEW_PACKAGE',
+          ageDays: 6,
+          versionsCount: 1,
+          message: 'Brand new package (6 days old).'
+        },
+        {
+          name: 'react',
+          ecosystem: 'npm',
+          file: 'package.json',
+          section: 'dependencies',
+          risk: 'CLEAN',
+          status: 'VERIFIED',
+          ageDays: 4500,
+          versionsCount: 180,
+          message: 'Verified npm package.'
+        },
+        {
+          name: 'requests',
+          ecosystem: 'pypi',
+          resolvedDist: 'requests',
+          file: 'requirements.txt',
+          line: 2,
+          risk: 'CLEAN',
+          status: 'VERIFIED',
+          ageDays: 4200,
+          versionsCount: 154,
+          message: 'Verified PyPI distribution.'
+        },
+        {
+          name: 'typescript',
+          ecosystem: 'npm',
+          file: 'package.json',
+          section: 'devDependencies',
+          risk: 'CLEAN',
+          status: 'VERIFIED',
+          ageDays: 4300,
+          versionsCount: 240,
+          message: 'Verified npm package.'
+        }
+      ];
+
+      renderFindings();
+      showToast('Loaded sample vector');
+    };
+
+    window.scanCodeSnippet = async function() {
+      const text = document.getElementById('codeTextarea').value;
+      if (!text.trim()) {
+        showToast('Paste code with imports first');
+        return;
+      }
+      showToast('Scanning imports...');
+      
+      const js = extractJsImports(text, 'snippet.js');
+      const py = extractPythonImports(text, 'snippet.py');
+      const combined = [...js, ...py];
+
+      if (combined.length === 0) {
+        showToast('No external packages detected in text');
+        return;
+      }
+
+      const verified = [];
+      for (const ref of combined) {
+        const v = await verifyPackage(ref);
+        verified.push(v);
+      }
+
+      allFindings = verified;
+      renderFindings();
+      showToast(`Verified ${verified.length} packages`);
+    };
+
+    // File Drag/Drop
+    const dropZone = document.getElementById('dropZone');
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-stone-500');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-stone-500');
+    });
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-stone-500');
+      const items = e.dataTransfer.items;
+      if (items && items.length > 0) {
+        showToast('Reading files...');
+        await processDroppedEntries(items);
+      }
+    });
+
+    async function processDroppedEntries(items) {
+      const discovered = [];
+      const traverse = async (entry, path = '') => {
+        if (['node_modules', '.git', 'venv', '.venv', '__pycache__'].includes(entry.name)) return;
+        if (entry.isFile) {
+          const file = await new Promise(res => entry.file(res));
+          const relPath = path ? `${path}/${entry.name}` : entry.name;
+          const ext = entry.name.split('.').pop().toLowerCase();
+
+          if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'py', 'json', 'toml', 'txt'].includes(ext) || entry.name === 'Pipfile' || entry.name === 'setup.cfg') {
+            const text = await file.text();
+            if (entry.name === 'package.json') discovered.push(...extractPackageJson(text, relPath));
+            else if (entry.name === 'pyproject.toml') discovered.push(...extractPyProjectToml(text, relPath));
+            else if (entry.name.includes('requirements') && entry.name.endsWith('.txt')) discovered.push(...extractRequirementsTxt(text, relPath));
+            else if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'].includes(ext)) discovered.push(...extractJsImports(text, relPath));
+            else if (ext === 'py') discovered.push(...extractPythonImports(text, relPath));
+          }
+        } else if (entry.isDirectory) {
+          const reader = entry.createReader();
+          const entries = await new Promise(res => reader.readEntries(res));
+          for (const sub of entries) {
+            await traverse(sub, path ? `${path}/${entry.name}` : entry.name);
+          }
+        }
+      };
+
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+        if (entry) await traverse(entry);
+      }
+
+      if (discovered.length === 0) {
+        showToast('No dependencies found');
+        return;
+      }
+
+      const uniqueMap = new Map();
+      discovered.forEach(d => {
+        const key = `${d.ecosystem}:${d.name}`;
+        if (!uniqueMap.has(key)) uniqueMap.set(key, d);
+      });
+
+      showToast(`Checking ${uniqueMap.size} dependencies...`);
+      const verified = [];
+      for (const ref of uniqueMap.values()) {
+        const v = await verifyPackage(ref);
+        verified.push(v);
+      }
+
+      allFindings = verified;
+      renderFindings();
+      showToast(`Verified ${verified.length} packages`);
+    }
+
+    window.handleFolderSelect = async function(files) {
+      if (!files || files.length === 0) return;
+      showToast(`Inspecting ${files.length} files...`);
+      const discovered = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const relPath = f.webkitRelativePath || f.name;
+        if (relPath.includes('node_modules') || relPath.includes('.git') || relPath.includes('venv')) continue;
+
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'py', 'json', 'toml', 'txt'].includes(ext) || f.name === 'Pipfile') {
+          const text = await f.text();
+          if (f.name === 'package.json') discovered.push(...extractPackageJson(text, relPath));
+          else if (f.name === 'pyproject.toml') discovered.push(...extractPyProjectToml(text, relPath));
+          else if (f.name.includes('requirements') && f.name.endsWith('.txt')) discovered.push(...extractRequirementsTxt(text, relPath));
+          else if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'].includes(ext)) discovered.push(...extractJsImports(text, relPath));
+          else if (ext === 'py') discovered.push(...extractPythonImports(text, relPath));
+        }
+      }
+
+      if (discovered.length === 0) {
+        showToast('No packages found');
+        return;
+      }
+
+      const uniqueMap = new Map();
+      discovered.forEach(d => {
+        const key = `${d.ecosystem}:${d.name}`;
+        if (!uniqueMap.has(key)) uniqueMap.set(key, d);
+      });
+
+      const verified = [];
+      for (const ref of uniqueMap.values()) {
+        const v = await verifyPackage(ref);
+        verified.push(v);
+      }
+
+      allFindings = verified;
+      renderFindings();
+      showToast(`Verified ${verified.length} packages`);
+    };
+
+    window.handleFileSelect = async function(files) {
+      if (!files || files.length === 0) return;
+      const f = files[0];
+      const text = await f.text();
+      let extracted = [];
+      if (f.name.endsWith('.json')) extracted = extractPackageJson(text, f.name);
+      else if (f.name.endsWith('.toml')) extracted = extractPyProjectToml(text, f.name);
+      else if (f.name.endsWith('.txt')) extracted = extractRequirementsTxt(text, f.name);
+      else if (['js', 'ts', 'jsx', 'tsx', 'mjs'].some(ext => f.name.endsWith(ext))) extracted = extractJsImports(text, f.name);
+      else if (f.name.endsWith('.py')) extracted = extractPythonImports(text, f.name);
+
+      if (extracted.length === 0) {
+        showToast('No packages in file');
+        return;
+      }
+
+      const verified = [];
+      for (const ref of extracted) {
+        const v = await verifyPackage(ref);
+        verified.push(v);
+      }
+
+      allFindings = verified;
+      renderFindings();
+      showToast(`Audited ${verified.length} packages`);
+    };
+
+    window.clearAllData = function() {
+      allFindings = [];
+      document.getElementById('codeTextarea').value = '';
+      renderFindings();
+      showToast('Workspace reset');
+    };
+
+    window.downloadAuditJson = function() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+        scanner: "slop-deps.dev",
+        timestamp: new Date().toISOString(),
+        findings: allFindings
+      }, null, 2));
+      const a = document.createElement('a');
+      a.setAttribute("href", dataStr);
+      a.setAttribute("download", "slop-deps-audit.json");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast('Saved slop-deps-audit.json');
+    };
+
+    window.copyToClipboard = function(text, successMsg = 'Copied!') {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(successMsg);
+      });
+    };
+
+    function escapeHtml(str) {
+      return (str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMsg').innerText = msg;
+      toast.classList.remove('translate-y-16', 'opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('translate-y-16', 'opacity-0', 'pointer-events-none');
+      }, 2400);
+    }
+
+    // Clean initial state on load: do NOT prefill findings!
+    window.addEventListener('DOMContentLoaded', () => {
+      renderFindings();
+    });
+  </script>
+
+</body>
+</html>
