@@ -1,6 +1,6 @@
 # slop-deps
 
-> tera AI fake package names invent karta hai. attackers unke naam register karke wait karte hain ke koi install kar le. ye tool unhe pakadta hai — lockfile me aane se pehle.
+> Your AI invents package names that don't exist. Attackers register those names and wait for someone to install them. This catches it — before it reaches your lockfile.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
@@ -16,23 +16,23 @@
    AI Dependency Hallucination & Supply-Chain Sentinel • v1.4.0
 ```
 
-seedhi baat, no bakwaas:
+Straight talk, no filler:
 
-Cursor/Copilot/Claude — ye sab 5-21% cases me aise package names suggest karte hain jo **exist hi nahi karte**. aur ye naam repeat bhi hote hain (~43% across runs, [CSA research](https://labs.cloudsecurityalliance.org/research/csa-research-note-slopsquatting-ai-supply-chain-20260419-csa) me published). matlab attacker ke liye easy money: same phantom naam utha, npm pe register kar, malware daal, wait kar. isko **slopsquatting** bolte hain aur ye theoretical nahi hai — `react-codeshift` jaisa naam already claim ho chuka hai.
+Cursor/Copilot/Claude suggest package names that **don't exist** in 5–21% of cases. And those names repeat — about 43% of hallucinated names show up again across runs, per [Cloud Security Alliance research](https://labs.cloudsecurityalliance.org/research/csa-research-note-slopsquatting-ai-supply-chain-20260419-csa). That makes it easy money for attackers: grab the same phantom names, register them on npm, stuff malware inside, wait. It's called **slopsquatting**, and it's not theoretical — names like `react-codeshift` have already been claimed.
 
-slop-deps iska seedha jawab hai: **ek command, zero setup, har import check** — source code me bhi, manifest me bhi, teeno ecosystems (npm / PyPI / crates.io).
+slop-deps is the direct answer: **one command, zero setup, every import checked** — in source code, in manifests, across three ecosystems (npm / PyPI / crates.io).
 
 ---
 
 ## Quick Start
 
-install bhi nahi karna padta. bas:
+No install step. Just:
 
 ```bash
 npx slop-deps
 ```
 
-ya clone karke locally:
+Or clone and run locally:
 
 ```bash
 git clone https://github.com/viditx/slop-deps.git
@@ -41,86 +41,86 @@ npm link
 slop-deps
 ```
 
-10-second proof: repo ke andar `demo/` folder hai — real hallucinated imports ke saath. `npx slop-deps --dir demo` chala, red CRITICAL flags dekh.
+10-second proof: the repo ships a `demo/` folder full of real hallucinated imports. Run `npx slop-deps --dir demo` and watch the red CRITICAL flags.
 
 ---
 
 ## The Threat: Package Hallucination (Slopsquatting)
 
-AI coding models (Claude, Cursor, Copilot, ChatGPT) convincing library names invent karte hain jo exist nahi karte:
+AI coding models (Claude, Cursor, Copilot, ChatGPT) confidently invent library names that were never published:
 
 ```typescript
-// AI agent ne hallucinate kiya:
+// hallucinated by an AI agent:
 import { formatRelativeDate } from 'date-fns-relative'; 
 import { useTactileSpring } from 'react-smooth-springs';
 ```
 
-donon npm pe exist nahi karte. attackers ka workflow:
+Neither exists on npm. The attacker workflow:
 
-1. public commits, PRs, aur AI-generated boilerplates me 404 imports crawl karo.
-2. un phantom naam ko **npm** ya **PyPI** pe register karo — reverse shells, crypto stealers, env exfiltration ke saath.
-3. jo bhi developer ya CI runner `npm install` / `pip install` chalaye — compromised.
+1. Crawl public commits, PRs, and AI-generated boilerplates for 404 imports.
+2. Register those phantom names on **npm** or **PyPI** — reverse shells, crypto stealers, environment exfiltration.
+3. The next developer or CI runner that runs `npm install` / `pip install` gets compromised.
 
-`slop-deps` raw source + manifests padhta hai, har import ko live registries ke against verify karta hai — **push hone se pehle, build hone se pehle**.
+`slop-deps` reads raw source + manifests and verifies every import against live registries — **before it's pushed, before it's built**.
 
 ---
 
 ## Verification Tiers
 
-| Status | Risk Level | Matlab |
+| Status | Risk Level | Meaning |
 | :--- | :--- | :--- |
-| **HALLUCINATED** | **CRITICAL** | package npm/PyPI pe exist hi nahi karta. attacker abhi register kar sakta hai. turant hatao. |
-| **SUSPICIOUS** | **HIGH** | 30 din ke andar registered, ≤2 releases. ya typosquat / install-script signals. dhyan se dekho. |
-| **VERIFIED** | **CLEAN** | established package, release history verified. |
+| **HALLUCINATED** | **CRITICAL** | Package doesn't exist on npm/PyPI. An attacker can register it right now. Remove immediately. |
+| **SUSPICIOUS** | **HIGH** | Registered within 30 days with ≤2 releases. Or typosquat / install-script signals. Inspect carefully. |
+| **VERIFIED** | **CLEAN** | Established package with verified release history. |
 
 ---
 
 ## Core Capabilities
 
-* **Zero Dependencies:** poora tool Node.js 18+ ke native APIs (`fetch`, `fs/promises`) pe bana hai. jo khud supply-chain check karta hai wo khud pe depend nahi karta — samajh rahe ho.
-* **Typosquat Engine:** Damerau-Levenshtein + confusable-character normalization (`m0rgan` → `morgan`, `reqeusts` → `requests`) — bundled corpus ke against, **fully offline, zero network**. naya package jo kisi giant se 1 edit door hai = flag. established = sirf heads-up.
-* **Install-Script Signal:** naye packages jo `preinstall`/`install`/`postinstall` ship karte hain — classic npm malware pattern — auto SUSPICIOUS.
-* **File-Level AST Parsing:** imports source code me se scan hote hain (`.js`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.py`, `.pyi`) — manifest tak pahunchne se pehle pakde jaate hain.
+* **Zero Dependencies:** Built entirely on Node.js 18+ native APIs (`fetch`, `fs/promises`). A supply-chain auditor that depends on nobody — that's the whole point.
+* **Typosquat Engine:** Damerau-Levenshtein matching with confusable-character normalization (`m0rgan` → `morgan`, `reqeusts` → `requests`) against a bundled corpus — **fully offline, zero network**. A new package one edit away from a giant gets flagged; established ones only get a heads-up.
+* **Install-Script Signal:** Young packages shipping `preinstall`/`install`/`postinstall` scripts — the classic npm malware pattern — are escalated to SUSPICIOUS automatically.
+* **File-Level AST Parsing:** Imports are scanned from source (`.js`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.py`, `.pyi`) before they ever reach a manifest.
 * **Manifest Coverage:** `package.json` (incl. `bundledDependencies`), `requirements*.txt`, `constraints.txt`, `pyproject.toml`, `setup.cfg`, `Pipfile`, `setup.py`.
-* **Monorepo Aware:** internal workspace packages (`workspace:*`, `file:`, `link:`) khud detect hoke ignore — Turborepo, Nx, pnpm sab.
-* **Rust / Cargo Support:** `.rs` files me `use` paths + `extern crate`, `Cargo.toml` manifests, crates.io pe live verification (hyphen/underscore name variants ke saath — rust wali quirk).
-* **Smart Namespace Mapping:** python import→distribution aliases (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`) aur PEP 420 namespaces (`google.cloud.*`, `azure.*`, `opentelemetry.*`).
-* **Noise Filtering:** stdlib built-ins, framework aliases (`$lib`, `@@/`), `tsconfig.json` path mappings — sab ignore. noise nahi, sirf signal.
-* **Fail-Closed Exit Codes:** criticals pe `exit 1`, missing dir/network pe `exit 2`, clean pe `exit 0`. CI me plug karo, done.
+* **Monorepo Aware:** Internal workspace packages (`workspace:*`, `file:`, `link:`) are detected and ignored — Turborepo, Nx, pnpm.
+* **Rust / Cargo Support:** `use` paths and `extern crate` in `.rs` sources, `Cargo.toml` manifests, live crates.io verification (with hyphen/underscore name variants — the Rust quirk).
+* **Smart Namespace Mapping:** Python import→distribution aliases (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`) and PEP 420 namespaces (`google.cloud.*`, `azure.*`, `opentelemetry.*`).
+* **Noise Filtering:** stdlib built-ins, framework aliases (`$lib`, `@@/`), `tsconfig.json` path mappings — all ignored. Signal, not noise.
+* **Fail-Closed Exit Codes:** `exit 1` on criticals, `exit 2` on missing dirs/network errors, `exit 0` on clean. Plug into CI and forget.
 
 ---
 
 ## CLI Usage
 
 ```bash
-# current directory scan
+# scan current directory
 slop-deps
 
-# specific directory
+# scan a specific directory
 slop-deps --dir ./src
 
-# pipelines ke liye raw JSON
+# raw JSON for pipelines
 slop-deps --json
 
-# GitHub code scanning ke liye SARIF 2.1.0
+# SARIF 2.1.0 for GitHub code scanning
 slop-deps --sarif > slop-deps.sarif
 
-# sirf git-staged files (pre-commit hook)
+# only git-staged files (pre-commit hook)
 slop-deps --staged
 
 # offline scan — persistent cache + bundled corpus, zero network
 slop-deps --offline
 
-# typosquat corpus ko live registries se refresh karo
+# refresh the typosquat corpus from live registries
 slop-deps --update-corpus
 
-# BYOK AI se hallucinated imports fix karwao (backups: *.slop-deps.bak)
+# let a BYOK AI fix hallucinated imports (backups: *.slop-deps.bak)
 SLOP_AI_KEY=sk-... npx slop-deps --fix
 
-# local model pe point karo — kuch bhi machine se bahar nahi jata
+# point fixes at a local model — nothing leaves your machine
 SLOP_AI_BASE_URL=http://127.0.0.1:11434/v1 npx slop-deps --fix
 
-# network verification incomplete ho toh fail karo
+# fail if network verification is incomplete
 slop-deps --strict
 
 # options
@@ -129,16 +129,16 @@ slop-deps --help
 
 ## Privacy
 
-**No telemetry. No accounts. No data collection.** scan ka ek hi network traffic hota hai — package names ke GET lookups against registry.npmjs.org aur pypi.org (wahi requests jo koi bhi package manager bhejta hai). full breakdown [PRIVACY.md](PRIVACY.md) me — "trust me" nahi, `grep -rn "fetch(" src/` se khud verify karo. full control ke 2 commands:
+**No telemetry. No accounts. No data collection.** A scan's only network traffic is GET lookups of package names against registry.npmjs.org and pypi.org — the same requests any package manager sends. Full breakdown in [PRIVACY.md](PRIVACY.md) — don't take my word for it, run `grep -rn "fetch(" src/` and verify. Two commands for full control:
 
 ```bash
-npx slop-deps --private   # zero-network scan: bundled corpus + local cache only
-npx slop-deps --clear-cache   # local verdict cache wipe
+npx slop-deps --private      # zero-network scan: bundled corpus + local cache only
+npx slop-deps --clear-cache  # wipe the local verdict cache
 ```
 
 ### Project config (`.slopdepsrc.json`)
 
-private toolchains aur monorepos apni duniya sikha sakte hain — fork ki zaroorat nahi:
+Private toolchains and monorepos can teach slop-deps their world — no forks needed:
 
 ```json
 {
@@ -148,13 +148,13 @@ private toolchains aur monorepos apni duniya sikha sakte hain — fork ki zaroor
 }
 ```
 
-- `builtins` — registries pe verify hi nahi honge (internal packages)
-- `popular` — typosquat corpus me add (apne org ke flagship naam protect karo)
+- `builtins` — never verified against registries (internal packages)
+- `popular` — added to the typosquat corpus (protect your org's flagship names)
 - `map` — custom import-name → distribution-name mappings
 
 ### Self-updating corpus
 
-typosquat engine **3,000+ npm aur 1,000+ PyPI names** pe chalta hai — curated entries + registry-generated list (`src/corpus.generated.js`) merged. `slop-deps --update-corpus` (ya monthly CI job) se regenerate — corpus kabhi rot nahi hota.
+The typosquat engine runs on **3,000+ npm and 1,000+ PyPI names** — curated entries merged with a registry-generated list (`src/corpus.generated.js`). Regenerate with `slop-deps --update-corpus` (or a monthly CI job) so the corpus never rots.
 
 ### Pre-commit hook
 
@@ -175,7 +175,7 @@ repos:
 
 ## CI/CD Integration (GitHub Actions)
 
-PR me hallucinated imports aaye toh automatically block:
+Block hallucinated imports in pull requests automatically:
 
 ```yaml
 name: Security Audit
@@ -198,9 +198,9 @@ jobs:
 
 ## Philosophy
 
-> agar cheez zyada lagti hai, toh wo fake hai.
+> If it looks like too much, it's fake.
 
-scanner khud wahi standard follow karta hai jo wo dusron me pakadta hai: zero dependencies, zero install scripts, zero telemetry, read-only filesystem. [PRIVACY.md](PRIVACY.md) me har claim grep-command ke saath verify karne ko bola gaya hai.
+The scanner holds itself to the standard it audits in others: zero dependencies, zero install scripts, zero telemetry, read-only filesystem. Every claim in [PRIVACY.md](PRIVACY.md) comes with the grep command to verify it.
 
 ---
 
