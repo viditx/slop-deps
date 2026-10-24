@@ -16,7 +16,9 @@ export function extractPackageJson(content, filePath = 'package.json') {
               v.startsWith('portal:') ||
               v.startsWith('git:') ||
               v.startsWith('git+') ||
+              v.startsWith('git@') ||
               v.startsWith('github:') ||
+              v.startsWith('patch:') ||
               v.startsWith('http:') ||
               v.startsWith('https:')
             ) {
@@ -47,12 +49,38 @@ export function extractPackageJson(content, filePath = 'package.json') {
               }
             }
           }
+          let cleanName = name.trim();
+          if (cleanName.startsWith('@')) {
+            const parts = cleanName.split('/');
+            cleanName = parts.slice(0, 2).join('/');
+          } else {
+            cleanName = cleanName.split('/')[0];
+          }
           packages.push({
-            name,
+            name: cleanName,
             version: String(version),
             ecosystem: 'npm',
             file: filePath,
             section
+          });
+        }
+      }
+    }
+
+    // bundledDependencies / bundleDependencies are plain string arrays of names
+    for (const bundleKey of ['bundledDependencies', 'bundleDependencies']) {
+      const arr = pkg[bundleKey];
+      if (Array.isArray(arr)) {
+        for (const raw of arr) {
+          if (typeof raw !== 'string') continue;
+          const cleanName = raw.trim();
+          if (!cleanName) continue;
+          packages.push({
+            name: cleanName,
+            version: '',
+            ecosystem: 'npm',
+            file: filePath,
+            section: bundleKey
           });
         }
       }
@@ -91,11 +119,12 @@ export function extractRequirementsTxt(content, filePath = 'requirements.txt') {
       continue;
     }
 
-    // Handle PEP 508 direct URL references: "package @ https://..."
+    // Handle PEP 508 direct URL references: "package @ https://..." or "package @ ./local"
     if (line.includes('@')) {
       const parts = line.split('@');
       const pkgName = parts[0].trim();
-      if (/https?:\/\/|git\+/i.test(parts[1])) continue;
+      // Anything scheme-like or path-like after @ is a direct/local reference, not a registry dep
+      if (parts.length > 1 && /^\s*(?:[\w+.-]+:|[/~.])/.test(parts[1])) continue;
       line = pkgName;
     }
 
@@ -166,11 +195,14 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
     const isProjectSection = currentSection === 'project';
     const isOptionalDepsSection = currentSection.startsWith('project.optional-dependencies') ||
                                   currentSection.startsWith('dependency-groups');
+    const isBuildSystem = currentSection === 'build-system';
+    const isFlitMetadata = currentSection === 'tool.flit.metadata';
 
-    // PEP 621 dependencies array or group array start
+    // PEP 621, PEP 518 [build-system], and Flit dependencies array
     if (
       (isProjectSection && /^(?:dependencies|optional-dependencies)\s*=\s*\[/i.test(line)) ||
-      (isOptionalDepsSection && /^[a-zA-Z0-9_\-\.]+\s*=\s*\[/i.test(line))
+      (isOptionalDepsSection && /^[a-zA-Z0-9_\-\.]+\s*=\s*\[/i.test(line)) ||
+      ((isBuildSystem || isFlitMetadata) && /^requires\s*=\s*\[/i.test(line))
     ) {
       inDependenciesArray = true;
       if (line.endsWith(']')) {
@@ -182,11 +214,11 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
     }
 
     if (inDependenciesArray) {
-      if (line.startsWith(']')) {
-        inDependenciesArray = false;
-        continue;
-      }
       parseTomlArrayItems(line, i + 1);
+      // Quoted items always end with a quote, so a trailing ']' means the array closes here
+      if (line.startsWith(']') || line.endsWith(']')) {
+        inDependenciesArray = false;
+      }
       continue;
     }
 
@@ -196,6 +228,9 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
                             /^tool\.poetry\.group\.[^.]+\.dependencies$/.test(currentSection);
 
     if (isPoetrySection) {
+      // Skip local path, git, or direct URL dependencies
+      if (/(?:path|git|url)\s*=/i.test(line)) continue;
+
       const match = line.match(/^([a-zA-Z0-9_\-\.]+)\s*=/);
       if (match) {
         const name = match[1].toLowerCase();
@@ -302,9 +337,13 @@ export function extractPipfile(content, filePath = 'Pipfile') {
     }
 
     if (currentSection === 'packages' || currentSection === 'dev-packages' || currentSection.endsWith('-packages')) {
-      const match = line.match(/^(?:["']([^"']+)["']|([a-zA-Z0-9_\-\.]+))\s*=/);
+      // Skip local path, git, or direct file dependencies
+      if (/(?:path|git|file)\s*=/i.test(line)) continue;
+
+      // Extras like requests[socks] are part of the key, not the name
+      const match = line.match(/^(?:["']([^"'\[\]]+)["']|([a-zA-Z0-9_\-\.]+(?:\[[^\]=]+\])?))\s*=/);
       if (match) {
-        const name = (match[1] || match[2]).toLowerCase();
+        const name = (match[1] || match[2]).toLowerCase().replace(/\[[^\]]*\]/g, '').trim();
         if (name && /[a-zA-Z0-9]/.test(name) && name !== 'python' && !['and', 'or', 'not', 'in'].includes(name)) {
           packages.push({
             name,
@@ -314,6 +353,49 @@ export function extractPipfile(content, filePath = 'Pipfile') {
             line: i + 1
           });
         }
+      }
+    }
+  }
+
+  return packages;
+}
+
+export function extractCargoToml(content, filePath = 'Cargo.toml') {
+  const packages = [];
+  const lines = content.split('\n');
+  let inDeps = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+    const commentIdx = line.indexOf('#');
+    if (commentIdx !== -1) line = line.slice(0, commentIdx).trim();
+    if (!line) continue;
+
+    const sectionMatch = line.match(/^\[+([^\]]+)\]+/);
+    if (sectionMatch) {
+      const section = sectionMatch[1].trim();
+      // [dependencies], [dev-dependencies], [build-dependencies], [workspace.dependencies],
+      // [target.'cfg(...)'.dependencies], and inline sub-tables like [dependencies.serde_derive]
+      const depsMatch = section.match(/^(?:workspace\.)?(?:dev-|build-)?dependencies(?:\.([a-zA-Z0-9_-]+))?$/)
+        || section.match(/^target\.[^.]+(?:\.[^]]*)?\.(?:dev-|build-)?dependencies(?:\.([a-zA-Z0-9_-]+))?$/);
+      inDeps = Boolean(depsMatch);
+      if (inDeps && depsMatch[1]) {
+        packages.push({ name: depsMatch[1].toLowerCase(), raw: section, ecosystem: 'cargo', file: filePath, line: i + 1 });
+      }
+      continue;
+    }
+
+    if (!inDeps) continue;
+
+    // path/git/registry-only deps never touch crates.io
+    if (/(?:path|git|registry|workspace)\s*=\s*(?!"[0-9])/i.test(line) && !/version\s*=/.test(line)) continue;
+    if (/^(?:path|git|registry)\s*=/i.test(line)) continue;
+
+    const match = line.match(/^([a-zA-Z0-9_-]+)\s*=\s*/);
+    if (match) {
+      const name = match[1].toLowerCase();
+      if (name && name !== 'workspace') {
+        packages.push({ name, raw: line, ecosystem: 'cargo', file: filePath, line: i + 1 });
       }
     }
   }

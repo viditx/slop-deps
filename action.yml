@@ -1,0 +1,33 @@
+name: 'slop-deps'
+description: 'Zero-dependency sentinel against slopsquatting — catches AI-hallucinated and typosquatted dependencies before they reach your lockfile.'
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  directory:
+    description: 'Directory to scan'
+    required: false
+    default: '.'
+  strict:
+    description: 'Exit with code 2 on suspicious or unresolved findings (fail the job)'
+    required: false
+    default: 'false'
+  sarif:
+    description: 'Emit slop-deps.sarif and upload it as an artifact for GitHub code scanning'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run slop-deps scan
+      shell: bash
+      run: npx --yes slop-deps@latest --dir "${{ inputs.directory }}" ${{ inputs.strict == 'true' && '--strict' || '' }} ${{ inputs.sarif == 'true' && '--sarif > slop-deps.sarif' || '' }}
+
+    - name: Upload SARIF artifact
+      if: ${{ inputs.sarif == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: slop-deps-sarif
+        path: slop-deps.sarif

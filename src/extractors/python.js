@@ -1,4 +1,4 @@
-const PY_FROM_IMPORT = /^\s*from\s+([a-zA-Z0-9_\.]+)\s+import\s+([a-zA-Z0-9_,\s\(\)]+)/;
+const PY_FROM_IMPORT = /^\s*from\s+([a-zA-Z0-9_\.]+)\s+import\s+([a-zA-Z0-9_,\s\(\)\*]+)/;
 const PY_IMPORT = /^\s*import\s+([a-zA-Z0-9_\., ]+)/;
 const PY_DYNAMIC_IMPORT = /\b(?:importlib\.import_module|__import__)\s*\(\s*['"]([^'"]+)['"]/g;
 
@@ -42,6 +42,13 @@ function getPythonRootModule(modulePath) {
       return `opentelemetry.${parts[1].toLowerCase()}`;
     }
     return 'opentelemetry';
+  }
+
+  if (p0 === 'paho') {
+    if (parts.length >= 2) {
+      return `paho.${parts[1].toLowerCase()}`;
+    }
+    return 'paho';
   }
 
   return p0;
@@ -146,7 +153,7 @@ function splitPythonStatements(line) {
       }
       if (ch === ':') {
         const trimmed = current.trim();
-        if (/^(?:try|except|else|finally|if|elif|while|for)\b/.test(trimmed)) {
+        if (/^(?:try|except|else|finally|if|elif|while|for|(?:async\s+)?(?:with|for)|def)\b/.test(trimmed)) {
           if (trimmed) stmts.push(trimmed);
           current = '';
           continue;
@@ -189,6 +196,9 @@ function splitPythonStatements(line) {
           } else if (p0 === 'opentelemetry' && parts.length === 2 && parts[1].toLowerCase() === 'instrumentation') {
             const items = itemsRaw.replace(/[\(\)]/g, '').split(',').map(s => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
             targetPkgs = items.map(it => `opentelemetry.instrumentation.${it.toLowerCase()}`);
+          } else if (p0 === 'paho' && parts.length === 1) {
+            const items = itemsRaw.replace(/[\(\)]/g, '').split(',').map(s => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
+            targetPkgs = items.map(it => `paho.${it.toLowerCase()}`);
           } else {
             targetPkgs = [getPythonRootModule(modulePath)];
           }

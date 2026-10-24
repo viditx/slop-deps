@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  /* GitHub social preview — screenshot at exactly 1280x640 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1280px; height: 640px; overflow: hidden;
+    background: #08090C;
+    font-family: 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
+    color: #F5F4F0;
+    background-image:
+      radial-gradient(ellipse 70% 60% at 85% -10%, rgba(255, 90, 38, 0.22), transparent),
+      radial-gradient(ellipse 50% 40% at 10% 110%, rgba(0, 245, 212, 0.10), transparent);
+    display: flex; align-items: center;
+  }
+  .wrap { padding: 0 90px; width: 100%; }
+  .pre {
+    font-size: 15px; line-height: 1.25; color: #6B7085; letter-spacing: 1px;
+    margin-bottom: 26px; white-space: pre;
+  }
+  .pre .crit { color: #FF2A6D; font-weight: 700; }
+  .pre .sugg { color: #00F5D4; }
+  .pre .warn { color: #FFB224; }
+  h1 {
+    font-size: 74px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.02;
+    margin-bottom: 20px;
+  }
+  h1 .x { color: #FF5A26; }
+  .sub {
+    font-size: 24px; color: #8B8FA3; line-height: 1.5; margin-bottom: 40px; max-width: 900px;
+  }
+  .sub b { color: #F5F4F0; font-weight: 600; }
+  .cmd {
+    display: inline-block;
+    background: #13161F; border: 1px solid rgba(245, 244, 240, 0.22); border-radius: 12px;
+    padding: 18px 30px; font-size: 26px; font-weight: 600;
+  }
+  .cmd .dollar { color: #FF5A26; margin-right: 14px; }
+  .badges { display: flex; gap: 14px; margin-top: 44px; }
+  .badge {
+    font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    padding: 8px 18px; border-radius: 20px; border: 1px solid rgba(245, 244, 240, 0.22);
+    color: #8B8FA3;
+  }
+  .badge.hot { color: #00F5D4; border-color: rgba(0, 245, 212, 0.4); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="pre"><span class="crit">CRITICAL</span>  express-auth-middleware-pro  <span class="sugg">— does not exist on npm</span>
+<span class="crit">CRITICAL</span>  lodaeh                         <span class="sugg">— did you mean 'lodash'?</span>
+<span class="warn">SUSPICIOUS</span> m0rgan                          <span class="sugg">— lookalike of 'morgan'</span></div>
+    <h1>slop<span class="x">-</span>deps</h1>
+    <div class="sub">Your AI writes <b>fake package names</b>. Attackers register them.<br />Catch hallucinated &amp; typosquatted deps <b>before they reach your lockfile</b>.</div>
+    <div class="cmd"><span class="dollar">$</span>npx slop-deps</div>
+    <div class="badges">
+      <div class="badge hot">zero dependencies</div>
+      <div class="badge">npm + pypi</div>
+      <div class="badge">CI ready</div>
+      <div class="badge">MIT</div>
+    </div>
+  </div>
+</body>
+</html>

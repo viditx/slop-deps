@@ -80,6 +80,7 @@ function maskStrings(code) {
   let out = '';
   let i = 0;
   let str = null;
+  const templateStack = [];
 
   while (i < code.length) {
     const ch = code[i];
@@ -87,6 +88,14 @@ function maskStrings(code) {
     if (str) {
       if (ch === '\\') {
         strings[strings.length - 1] += ch + (code[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (str === '`' && ch === '$' && code[i + 1] === '{') {
+        templateStack.push({ braceDepth: 1 });
+        out += '\n'.repeat((strings[strings.length - 1].match(/\n/g) || []).length);
+        out += '${';
+        str = null;
         i += 2;
         continue;
       }
@@ -101,6 +110,23 @@ function maskStrings(code) {
       continue;
     }
 
+    if (templateStack.length > 0) {
+      if (ch === '{') {
+        templateStack[templateStack.length - 1].braceDepth++;
+      } else if (ch === '}') {
+        templateStack[templateStack.length - 1].braceDepth--;
+        if (templateStack[templateStack.length - 1].braceDepth === 0) {
+          templateStack.pop();
+          out += '}';
+          str = '`';
+          strings.push('');
+          out += '`' + PH_START + (strings.length - 1) + PH_END;
+          i++;
+          continue;
+        }
+      }
+    }
+
     if (ch === '/' && code[i + 1] === '/') {
       while (i < code.length && code[i] !== '\n') i++;
       continue;
@@ -109,12 +135,14 @@ function maskStrings(code) {
     if (ch === '/' && code[i + 1] === '*') {
       const end = code.indexOf('*/', i + 2);
       const stop = end === -1 ? code.length : end + 2;
-      out += '\n'.repeat((code.slice(i, stop).match(/\n/g) || []).length);
+      const nlCount = (code.slice(i, stop).match(/\n/g) || []).length;
+      out += nlCount > 0 ? '\n'.repeat(nlCount) : ' ';
       i = stop;
       continue;
     }
 
     // Handle regex literals so quotes inside regex character classes (e.g. /['"]/) never trigger string mode
+    // and braces inside regexes (e.g. /[{]/ or /\{/) never corrupt block brace counter
     if (ch === '/' && isRegexStart(code, i)) {
       out += ch;
       i++;
@@ -122,7 +150,8 @@ function maskStrings(code) {
       while (i < code.length) {
         const rCh = code[i];
         if (rCh === '\\') {
-          out += code.slice(i, i + 2);
+          const esc = code.slice(i, i + 2);
+          out += esc.replace(/[{}]/g, '_');
           i += 2;
           continue;
         }
@@ -138,7 +167,7 @@ function maskStrings(code) {
           }
           break;
         }
-        out += rCh;
+        out += (rCh === '{' || rCh === '}') ? '_' : rCh;
         i++;
       }
       continue;
@@ -180,6 +209,7 @@ function isInsideJsxOrBlock(code, matchIndex, isStatic = true) {
 
   // Track unclosed JSX/HTML tags up to match index
   const openTags = [];
+  let lastTagEnd = 0;
   let i = 0;
   while (i < matchIndex) {
     const ch = code[i];
@@ -206,21 +236,42 @@ function isInsideJsxOrBlock(code, matchIndex, isStatic = true) {
       let j = nameEnd;
       let exprDepth = 0;
       let isSelfClose = false;
+      let isInvalid = false;
 
       while (j < matchIndex) {
         const tCh = code[j];
         if (tCh === '{') exprDepth++;
         else if (tCh === '}' && exprDepth > 0) exprDepth--;
-        else if (tCh === '>' && exprDepth === 0) {
-          if (code[j - 1] === '/') isSelfClose = true;
-          break;
+        else if (exprDepth === 0) {
+          // In JSX attributes, ;, ?, (, ), [, ], +, *, % outside { } indicate JS code (not a tag)
+          if (/[;?\(\)\[\]+*%]/.test(tCh)) {
+            isInvalid = true;
+            break;
+          }
+          if (tCh === '>') {
+            if (code[j - 1] === '/') isSelfClose = true;
+            break;
+          }
         }
         j++;
       }
 
-      if (j >= matchIndex) {
-        break;
+      if (isInvalid || j >= matchIndex) {
+        i = isInvalid ? nameStart : j;
+        continue;
       }
+
+      // Generic arrow function or type parameter, e.g. <T>(v: T) => ...
+      if (!isSelfClose && !isClose) {
+        let afterGt = j + 1;
+        while (afterGt < matchIndex && /\s/.test(code[afterGt])) afterGt++;
+        if (code[afterGt] === '(' || code[afterGt] === ',') {
+          i = nameStart;
+          continue;
+        }
+      }
+
+      lastTagEnd = j + 1;
 
       if (isSelfClose) {
         i = j + 1;
@@ -243,6 +294,15 @@ function isInsideJsxOrBlock(code, matchIndex, isStatic = true) {
 
   const lastOpen = openTags[openTags.length - 1];
   if (lastOpen && lastOpen.toLowerCase() !== 'script') {
+    // If inside an active embedded expression brace { ... } after the tag opened, it is executable JS code!
+    let exprDepthAfterTag = 0;
+    for (let k = lastTagEnd; k < matchIndex; k++) {
+      if (code[k] === '{') exprDepthAfterTag++;
+      else if (code[k] === '}' && exprDepthAfterTag > 0) exprDepthAfterTag--;
+    }
+    if (exprDepthAfterTag > 0) {
+      return false;
+    }
     return true;
   }
 
@@ -290,7 +350,9 @@ export function extractJsImports(sourceCode, filePath = '') {
           name: pkg,
           ecosystem: 'npm',
           file: filePath,
-          line: masked.slice(0, match.index).split('\n').length,
+          // +1: separator-consuming patterns (leading \n, ;, etc.) start the match
+          // one char before the keyword, so include it when counting newlines
+          line: masked.slice(0, match.index + 1).split('\n').length,
           raw: rawSpec
         });
       }

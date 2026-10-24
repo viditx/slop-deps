@@ -1,3 +1,6 @@
+import { findTyposquatCandidate, typosquatSuggestion } from '../typosquat.js';
+import { cacheGet, cacheSet } from './cache.js';
+
 const CACHE = new Map();
 const IN_FLIGHT = new Map();
 
@@ -5,11 +8,31 @@ export async function checkNpmPackage(pkgName) {
   if (CACHE.has(pkgName)) return CACHE.get(pkgName);
   if (IN_FLIGHT.has(pkgName)) return IN_FLIGHT.get(pkgName);
 
+  const clean = pkgName?.trim();
+  if (!clean || clean.includes('..') || clean === '.' || !/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/i.test(clean)) {
+    const invalidResult = {
+      name: pkgName,
+      ecosystem: 'npm',
+      status: 'INVALID',
+      risk: 'WARN',
+      exists: false,
+      message: 'Invalid package specifier format.'
+    };
+    CACHE.set(pkgName, invalidResult);
+    return invalidResult;
+  }
+
+  const persisted = await cacheGet(`npm:${clean.toLowerCase()}`);
+  if (persisted) {
+    CACHE.set(pkgName, persisted);
+    return persisted;
+  }
+
   const promise = (async () => {
     // Encode scoped packages properly: @org/pkg -> @org%2Fpkg
-    const encodedName = pkgName.startsWith('@') 
-      ? `@${pkgName.slice(1).replace('/', '%2F')}` 
-      : pkgName;
+    const encodedName = clean.startsWith('@') 
+      ? `@${clean.slice(1).replace('/', '%2F')}` 
+      : clean;
 
     const url = `https://registry.npmjs.org/${encodedName}`;
 
@@ -20,18 +43,20 @@ export async function checkNpmPackage(pkgName) {
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
-          'Accept': 'application/json'
+          'Accept': 'application/vnd.npm.install-v1+json, application/json;q=0.9'
         }
       });
 
     if (res.status === 404) {
+      const suggestion = typosquatSuggestion(clean, 'npm');
       const result = {
         name: pkgName,
         ecosystem: 'npm',
         status: 'HALLUCINATED',
         risk: 'CRITICAL',
         exists: false,
-        message: 'Package DOES NOT EXIST on npm. Potential AI hallucination trap!'
+        message: `Package DOES NOT EXIST on npm. Potential AI hallucination trap!`
+          + (suggestion ? ` Did you mean '${suggestion}'?` : '')
       };
       CACHE.set(pkgName, result);
       return result;
@@ -67,13 +92,38 @@ export async function checkNpmPackage(pkgName) {
     const createdDate = data.time?.created ? new Date(data.time.created) : null;
     const ageDays = createdDate ? Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24)) : 999;
     const versions = Object.keys(data.versions || {});
+    const latestTag = data['dist-tags']?.latest;
+    const latestScripts = (latestTag && data.versions?.[latestTag]?.scripts) || null;
+    const hasInstallScripts = Boolean(
+      latestScripts && (latestScripts.install || latestScripts.preinstall || latestScripts.postinstall || latestScripts.prepare)
+    );
 
     let status = 'VERIFIED';
     let risk = 'CLEAN';
     let message = 'Legitimate published package.';
+    let signals = [];
 
-    // Zero version anomaly or brand new package detection
-    if (versions.length === 0) {
+    // Typosquat: name is one or two edits from a hugely popular package
+    const squat = findTyposquatCandidate(clean, 'npm', ageDays);
+    if (squat && squat.severity === 'suspect') {
+      signals.push(
+        squat.distance === 0
+          ? `name uses lookalike characters of '${squat.canonical}'`
+          : `name is ${squat.distance} edit${squat.distance > 1 ? 's' : ''} from '${squat.canonical}'`
+      );
+    }
+
+    if (hasInstallScripts && ageDays < 365 && versions.length <= 3) {
+      signals.push('runs install scripts');
+    }
+
+    if (signals.length > 0) {
+      status = 'SUSPICIOUS';
+      risk = 'HIGH';
+      message = `Typosquat / supply-chain risk signals: ${signals.join(' + ')}. Inspect before installing.`;
+    } else if (squat && squat.severity === 'suggestion') {
+      message = `Legitimate package, but the name closely resembles '${squat.canonical}' — verify this import was intentional.`;
+    } else if (versions.length === 0) {
       status = 'SUSPICIOUS';
       risk = 'HIGH';
       message = 'Package exists on npm registry, but has 0 published versions.';
@@ -91,8 +141,9 @@ export async function checkNpmPackage(pkgName) {
         exists: true,
         ageDays,
         versionsCount: versions.length,
-        latestVersion: data['dist-tags']?.latest || versions[versions.length - 1] || 'none',
+        latestVersion: latestTag || versions[versions.length - 1] || 'none',
         description: data.description || '',
+        hasInstallScripts,
         message
       };
     } catch (err) {
@@ -114,6 +165,7 @@ export async function checkNpmPackage(pkgName) {
     const result = await promise;
     if (result.status !== 'NETWORK_ERROR' && result.status !== 'UNKNOWN') {
       CACHE.set(pkgName, result);
+      cacheSet(`npm:${clean.toLowerCase()}`, result);
     }
     return result;
   } finally {

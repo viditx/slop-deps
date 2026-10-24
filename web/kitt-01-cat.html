@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KITT-01 // Interactive SVG Mascot & File Processor</title>
+  <!-- Load Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Load Google Fonts: Space Grotesk & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-oled: #08090C;
+      --panel-bg: #11131A;
+      --panel-border: #222634;
+      --cream: #F5F4F0;
+      --cream-shadow: #DFDDD4;
+      --ginger: #FF5526;
+      --ginger-dark: #CC3910;
+      --obsidian: #181720;
+      --lavender: #A39BBE;
+      --cyan-glow: #00F5D4;
+      --emerald-glow: #10B981;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-oled);
+      color: var(--cream);
+      font-family: 'Space Grotesk', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 0),
+        radial-gradient(circle at 50% 35%, rgba(0, 245, 212, 0.05) 0%, rgba(255, 85, 38, 0.02) 35%, transparent 70%);
+      background-size: 24px 24px, 100% 100%;
+    }
+
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Hardware chassis aesthetic */
+    .te-chassis {
+      background: linear-gradient(180deg, #141720 0%, #0C0E14 100%);
+      border: 1px solid #25293A;
+      box-shadow: 
+        0 25px 60px -15px rgba(0, 0, 0, 0.85),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+        0 2px 0 0 rgba(255, 255, 255, 0.06) inset;
+    }
+
+    /* Tactile Mechanical Buttons */
+    .te-btn {
+      background: linear-gradient(180deg, #232736 0%, #181B26 100%);
+      border: 1px solid #32384D;
+      box-shadow: 
+        0 4px 0 #0B0D13,
+        0 5px 10px rgba(0, 0, 0, 0.5),
+        0 1px 0 rgba(255, 255, 255, 0.1) inset;
+      transition: all 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+    }
+
+    .te-btn:hover {
+      background: linear-gradient(180deg, #2A2F42 0%, #1D212E 100%);
+      border-color: #454D6B;
+      transform: translateY(-1px);
+      box-shadow: 
+        0 5px 0 #0B0D13,
+        0 8px 15px rgba(0, 0, 0, 0.6),
+        0 1px 0 rgba(255, 255, 255, 0.14) inset;
+    }
+
+    .te-btn:active, .te-btn.active-state {
+      transform: translateY(3px);
+      box-shadow: 
+        0 1px 0 #0B0D13,
+        0 2px 4px rgba(0, 0, 0, 0.4),
+        0 1px 0 rgba(255, 255, 255, 0.05) inset;
+    }
+
+    .te-btn.active-state {
+      border-color: var(--cyan-glow);
+      background: linear-gradient(180deg, #1E2933 0%, #121A22 100%);
+    }
+
+    .te-btn.active-state .led-dot {
+      background-color: var(--cyan-glow);
+      box-shadow: 0 0 8px var(--cyan-glow);
+    }
+
+    .te-btn-orange {
+      background: linear-gradient(180deg, #FF6438 0%, #E04116 100%);
+      border: 1px solid #FF8563;
+      color: #08090C;
+      font-weight: 700;
+      box-shadow: 
+        0 4px 0 #8F2406,
+        0 6px 14px rgba(255, 85, 38, 0.35),
+        0 1px 0 rgba(255, 255, 255, 0.35) inset;
+    }
+
+    .te-btn-orange:hover {
+      background: linear-gradient(180deg, #FF744D 0%, #EB491D 100%);
+      border-color: #FFA085;
+      box-shadow: 
+        0 5px 0 #8F2406,
+        0 8px 20px rgba(255, 85, 38, 0.5),
+        0 1px 0 rgba(255, 255, 255, 0.4) inset;
+    }
+
+    .te-btn-orange:active {
+      transform: translateY(3px);
+      box-shadow: 
+        0 1px 0 #8F2406,
+        0 2px 5px rgba(255, 85, 38, 0.3);
+    }
+
+    #mascot-svg * {
+      transform-box: fill-box;
+    }
+
+    /* Smooth morphing transitions for cat anatomy */
+    #cat-torso, #cat-head-group, #ear-left, #ear-right, 
+    #paw-left-idle, #paw-right-idle, .pupil-circle, #cat-mouth-group,
+    #prop-keyboard, #prop-envelope, #prop-coffee-group, #glasses-group {
+      transition: all 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* 1. IDLE STATE ANIMATIONS */
+    @keyframes breathe {
+      0%, 100% { transform: scaleY(1) translateY(0px); }
+      50% { transform: scaleY(1.018) translateY(-3px); }
+    }
+
+    @keyframes headBob {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-4px) rotate(0.6deg); }
+    }
+
+    #cat-torso {
+      transform-origin: bottom center;
+      animation: breathe 4s ease-in-out infinite;
+    }
+
+    #cat-head-outer {
+      transform-origin: center bottom;
+      animation: headBob 4s ease-in-out infinite;
+      animation-delay: -0.4s;
+    }
+
+    #ear-left { transform-origin: 80% 85%; }
+    #ear-right { transform-origin: 20% 85%; }
+
+    /* 2. DRAG HOVER STATE */
+    .state-drag #ear-left {
+      transform: rotate(-14deg) scale(1.08) translateY(-4px);
+    }
+    .state-drag #ear-right {
+      transform: rotate(14deg) scale(1.08) translateY(-4px);
+    }
+    .state-drag #cat-head-group {
+      transform: translateY(-10px) scale(1.03);
+    }
+    .state-drag #paw-left-idle {
+      transform: translate(-12px, 16px) scale(1.12);
+    }
+    .state-drag #paw-right-idle {
+      transform: translate(12px, 16px) scale(1.12);
+    }
+    .state-drag #dropzone-ring {
+      stroke: var(--ginger);
+      stroke-dashoffset: 0;
+      opacity: 0.9;
+    }
+
+    /* 3. HACKING / FILE DROP STATE */
+    @keyframes hackTapLeft {
+      0%, 100% { transform: translateY(0px) rotate(-4deg); }
+      50% { transform: translateY(-22px) rotate(8deg); }
+    }
+    @keyframes hackTapRight {
+      0%, 100% { transform: translateY(-20px) rotate(-8deg); }
+      50% { transform: translateY(2px) rotate(4deg); }
+    }
+    @keyframes hackHeadJitter {
+      0%, 100% { transform: translateY(6px) rotate(-1.5deg); }
+      25% { transform: translateY(8px) rotate(1.5deg); }
+      50% { transform: translateY(5px) rotate(-0.8deg); }
+      75% { transform: translateY(9px) rotate(1.2deg); }
+    }
+    @keyframes keycapGlow {
+      0%, 100% { fill: #00F5D4; opacity: 0.9; }
+      50% { fill: #FF5526; opacity: 0.3; }
+    }
+    @keyframes floatCode {
+      0% { transform: translateY(15px) scale(0.8); opacity: 0; }
+      30% { opacity: 1; }
+      100% { transform: translateY(-55px) scale(1.1); opacity: 0; }
+    }
+
+    .state-hacking #cat-head-outer {
+      animation: hackHeadJitter 0.22s infinite;
+    }
+    .state-hacking #ear-left {
+      transform: rotate(-22deg) translateY(4px);
+    }
+    .state-hacking #ear-right {
+      transform: rotate(22deg) translateY(4px);
+    }
+    .state-hacking #paw-left-hack {
+      animation: hackTapLeft 0.11s ease-in-out infinite;
+    }
+    .state-hacking #paw-right-hack {
+      animation: hackTapRight 0.11s ease-in-out infinite;
+    }
+    .state-hacking .code-particle-1 { animation: floatCode 0.7s linear infinite; }
+    .state-hacking .code-particle-2 { animation: floatCode 0.85s linear infinite 0.2s; }
+    .state-hacking .code-particle-3 { animation: floatCode 0.65s linear infinite 0.4s; }
+
+    /* Screen Shake & Claw Slash */
+    @keyframes screenImpact {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      15% { transform: translate(-16px, 10px) rotate(-1.8deg) scale(1.02); }
+      30% { transform: translate(14px, -12px) rotate(1.8deg); }
+      45% { transform: translate(-12px, -6px) rotate(-1.2deg); }
+      60% { transform: translate(10px, 8px) rotate(0.8deg); }
+      75% { transform: translate(-6px, 3px) rotate(-0.4deg); }
+      100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+    }
+
+    .claw-impact-shake {
+      animation: screenImpact 0.34s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    .slash-line {
+      stroke-dasharray: 900;
+      stroke-dashoffset: 900;
+    }
+
+    @keyframes slashRip {
+      0% { stroke-dashoffset: 900; opacity: 1; stroke-width: 14px; }
+      35% { stroke-dashoffset: 0; opacity: 1; stroke-width: 18px; }
+      75% { stroke-dashoffset: 0; opacity: 0.9; stroke-width: 6px; }
+      100% { stroke-dashoffset: -900; opacity: 0; stroke-width: 1px; }
+    }
+
+    .slash-active .slash-1 { animation: slashRip 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .slash-active .slash-2 { animation: slashRip 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.03s forwards; }
+    .slash-active .slash-3 { animation: slashRip 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.06s forwards; }
+    .slash-active .slash-4 { animation: slashRip 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.08s forwards; }
+
+    /* 4. REPORT DELIVERY STATE */
+    .prop-hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(45px) scale(0.75);
+    }
+
+    .prop-visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0px) scale(1);
+    }
+
+    @keyframes badgePulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+
+    .state-report #wax-seal {
+      animation: badgePulse 1.8s ease-in-out infinite;
+      transform-origin: center;
+    }
+
+    /* 5. CHILL / COFFEE SIPPING STATE */
+    @keyframes sipMugMotion {
+      0%, 20%, 100% { transform: translateY(0px) rotate(0deg); }
+      45%, 65% { transform: translateY(-28px) rotate(-6deg) scale(1.03); }
+    }
+    @keyframes sipHeadNod {
+      0%, 20%, 100% { transform: translateY(0px) rotate(0deg); }
+      45%, 65% { transform: translateY(10px) rotate(2deg); }
+    }
+    @keyframes steamRise {
+      0% { stroke-dashoffset: 60; opacity: 0; transform: translateY(8px) translateX(0px); }
+      40% { opacity: 0.75; }
+      100% { stroke-dashoffset: 0; opacity: 0; transform: translateY(-34px) translateX(6px); }
+    }
+
+    .state-chill #prop-coffee-Lift {
+      animation: sipMugMotion 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      transform-origin: center bottom;
+    }
+    .state-chill #cat-head-outer {
+      animation: sipHeadNod 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+    }
+    .state-chill .steam-wisp-1 {
+      stroke-dasharray: 60;
+      animation: steamRise 2.6s ease-out infinite;
+    }
+    .state-chill .steam-wisp-2 {
+      stroke-dasharray: 60;
+      animation: steamRise 2.6s ease-out infinite 0.9s;
+    }
+    .state-chill .steam-wisp-3 {
+      stroke-dasharray: 60;
+      animation: steamRise 2.6s ease-out infinite 1.7s;
+    }
+
+    /* Eyelid states */
+    .eyelid-top, .eyelid-bottom {
+      transition: transform 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* Blinking closure */
+    .blinking .eyelid-top {
+      transform: translateY(42px) !important;
+    }
+    .blinking .eyelid-bottom {
+      transform: translateY(-42px) !important;
+    }
+    /* Chill relaxed half-lids */
+    .state-chill .eyelid-top {
+      transform: translateY(20px);
+    }
+    /* Focused squinting during hacking */
+    .state-hacking .eyelid-top {
+      transform: translateY(12px) rotate(6deg);
+    }
+    .state-hacking .eyelid-bottom {
+      transform: translateY(-12px);
+    }
+
+    /* Speech bubble spring pop */
+    .speech-pill {
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .speech-pop {
+      transform: scale(0.92) translateY(6px);
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 sm:p-6 md:p-8 select-none">
+
+  <header class="w-full max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-2xl te-chassis z-20">
+    <!-- Left Brand & Model Info -->
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-[#FF5526] flex items-center justify-center shadow-inner border border-[#FF8563]">
+        <svg class="w-5 h-5 text-[#08090C]" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M4 3L10 8H14L20 3V13C20 17.4183 16.4183 21 12 21C7.58172 21 4 17.4183 4 13V3Z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-bold tracking-tight text-sm sm:text-base text-[#F5F4F0]">KITT-01</span>
+          <span class="text-[10px] font-mono-tech uppercase px-1.5 py-0.5 rounded bg-[#222634] text-[#00F5D4] border border-[#00F5D4]/30">OP-MASCOT</span>
+        </div>
+        <p class="text-[11px] font-mono-tech text-[#A39BBE] hidden sm:block">VECTOR FIELD UNIT // ZERO-DEPENDENCY SVG ENGINE</p>
+      </div>
+    </div>
+
+    <!-- Center Live Telemetry Readout -->
+    <div class="hidden lg:flex items-center gap-6 px-4 py-1.5 rounded-xl bg-[#090B10] border border-[#1E2230] font-mono-tech text-xs">
+      <div class="flex items-center gap-2">
+        <span class="text-[#6E768A]">STATE:</span>
+        <span id="hud-state-label" class="text-[#00F5D4] font-semibold">01_IDLE_WAIT</span>
+      </div>
+      <div class="h-3 w-[1px] bg-[#222634]"></div>
+      <div class="flex items-center gap-2">
+        <span class="text-[#6E768A]">PUPIL_VEC:</span>
+        <span id="hud-vector-label" class="text-[#F5F4F0]">+00.0° / 0.0px</span>
+      </div>
+      <div class="h-3 w-[1px] bg-[#222634]"></div>
+      <div class="flex items-center gap-2">
+        <span class="text-[#6E768A]">SPRING_HZ:</span>
+        <span class="text-[#FF5526]">60.0 FPS</span>
+      </div>
+    </div>
+
+    <!-- Right Quick Actions (SFX Toggle + Upload Trigger) -->
+    <div class="flex items-center gap-2.5">
+      <button id="btn-sfx-toggle" class="te-btn px-3 py-2 rounded-xl flex items-center gap-2 text-xs font-mono-tech text-[#F5F4F0]" title="Toggle Tactile Synthesizer">
+        <span id="sfx-led" class="w-2 h-2 rounded-full bg-[#00F5D4] shadow-[0_0_8px_#00F5D4]"></span>
+        <span id="sfx-text">SYNTH: ON</span>
+      </button>
+
+      <label for="hidden-file-input" class="te-btn te-btn-orange px-3.5 py-2 rounded-xl flex items-center gap-2 text-xs font-mono-tech cursor-pointer">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+        </svg>
+        <span>DROP / BROWSE FILE</span>
+      </label>
+      <input id="hidden-file-input" type="file" class="hidden" multiple />
+    </div>
+  </header>
+
+  <main class="flex-1 flex flex-col items-center justify-center relative my-4">
+    
+    <!-- Central Stage / Dropzone Wrapper -->
+    <div id="stage-container" class="relative w-full max-w-2xl mx-auto flex flex-col items-center justify-center p-4 sm:p-6 rounded-3xl transition-all duration-300">
+      
+      <!-- Top Floating Pill Status -->
+      <div class="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#12151F]/90 border border-[#252A3D] mb-2 shadow-lg backdrop-blur-md">
+        <span id="stage-status-dot" class="w-2 h-2 rounded-full bg-[#00F5D4] animate-pulse"></span>
+        <span id="stage-status-badge" class="text-[11px] font-mono-tech tracking-wider uppercase text-[#A39BBE]">DRAG ANY FILE OVER STAGE OR CLICK BROWSE</span>
+      </div>
+
+      <!-- PURE SVG MASCOT VIEWPORT -->
+      <div id="svg-viewport" class="relative w-full max-w-[460px] aspect-[500/490] flex items-center justify-center">
+        
+        <svg id="mascot-svg" viewBox="0 0 500 490" class="w-full h-full overflow-visible state-idle" xmlns="http://www.w3.org/2000/svg">
+          
+          <defs>
+            <!-- Warm Cream 3D Shading -->
+            <linearGradient id="creamGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#FAF9F5"/>
+              <stop offset="75%" stop-color="#F2EFE6"/>
+              <stop offset="100%" stop-color="#E2DEC9"/>
+            </linearGradient>
+
+            <linearGradient id="creamShadowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#E8E4D8"/>
+              <stop offset="100%" stop-color="#CFC9B6"/>
+            </linearGradient>
+
+            <!-- Burnt Ginger Accents -->
+            <linearGradient id="gingerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#FF6B42"/>
+              <stop offset="100%" stop-color="#D9380F"/>
+            </linearGradient>
+
+            <!-- Lavender Obsidian Ears & Eye Sockets -->
+            <linearGradient id="obsidianGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#232030"/>
+              <stop offset="100%" stop-color="#12101B"/>
+            </linearGradient>
+
+            <linearGradient id="innerEarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#FF5526"/>
+              <stop offset="100%" stop-color="#9A7FB8"/>
+            </linearGradient>
+
+            <!-- Glowing Emerald/Cyan Pupils -->
+            <radialGradient id="pupilCyanGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#72FCEF"/>
+              <stop offset="45%" stop-color="#00F5D4"/>
+              <stop offset="100%" stop-color="#049B8E"/>
+            </radialGradient>
+
+            <!-- Hologram Screen Glow -->
+            <linearGradient id="holoGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+              <stop offset="0%" stop-color="#00F5D4" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="#00F5D4" stop-opacity="0.0"/>
+            </linearGradient>
+
+            <!-- Drop Shadow Filter -->
+            <filter id="tactileShadow" x="-15%" y="-15%" width="130%" height="130%">
+              <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#020305" flood-opacity="0.65"/>
+            </filter>
+
+            <filter id="cyanGlowFilter" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="5" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+
+            <filter id="clawGlowFilter" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#FF5526" flood-opacity="0.9"/>
+            </filter>
+
+            <!-- Eye Socket Clip Paths -->
+            <clipPath id="clip-eye-left">
+              <circle cx="195" cy="212" r="35"/>
+            </clipPath>
+            <clipPath id="clip-eye-right">
+              <circle cx="305" cy="212" r="35"/>
+            </clipPath>
+          </defs>
+
+          <!-- ==================================================== -->
+          <!-- LAYER 1: AMBIENT STAGE GRID & DROPZONE TARGET RING   -->
+          <!-- ==================================================== -->
+          <g id="stage-backdrop">
+            <!-- Ground Shadow Pedestal -->
+            <ellipse cx="250" cy="405" rx="165" ry="26" fill="#040507" opacity="0.85"/>
+            <ellipse cx="250" cy="405" rx="135" ry="18" fill="#121624" stroke="#23283B" stroke-width="1.5"/>
+            
+            <!-- Interactive Radar Drop Ring -->
+            <ellipse id="dropzone-ring" cx="250" cy="405" rx="155" ry="23" fill="none" stroke="#00F5D4" stroke-width="2" stroke-dasharray="10 8" opacity="0.25" class="transition-all duration-300"/>
+
+            <!-- Technical Crosshair Marks -->
+            <g stroke="#2E354B" stroke-width="1.5" stroke-linecap="round">
+              <path d="M70 110 H82 M76 104 V116"/>
+              <path d="M418 110 H430 M424 104 V116"/>
+              <path d="M70 360 H82 M76 354 V366"/>
+              <path d="M418 360 H430 M424 354 V366"/>
+            </g>
+            <text x="88" y="114" fill="#3B435E" font-family="JetBrains Mono" font-size="9" letter-spacing="1">SYS.VEC.01</text>
+            <text x="355" y="114" fill="#3B435E" font-family="JetBrains Mono" font-size="9" letter-spacing="1">FOV: 120°</text>
+          </g>
+
+          <!-- ==================================================== -->
+          <!-- LAYER 2: DYNAMIC SPRING TAIL (Procedural Bezier)     -->
+          <!-- ==================================================== -->
+          <g id="cat-tail-layer" filter="url(#tactileShadow)">
+            <!-- Base Tail Path updated at 60fps via JS spring oscillator -->
+            <path id="tail-main-path" d="M 330 365 C 395 365, 435 310, 420 245" fill="none" stroke="url(#creamGrad)" stroke-width="28" stroke-linecap="round"/>
+            <!-- Ginger Striped Tail Tip -->
+            <path id="tail-ginger-tip" d="M 330 365 C 395 365, 435 310, 420 245" fill="none" stroke="url(#gingerGrad)" stroke-width="28" stroke-linecap="round" stroke-dasharray="45 400" stroke-dashoffset="-145"/>
+            <path id="tail-obsidian-band" d="M 330 365 C 395 365, 435 310, 420 245" fill="none" stroke="#181720" stroke-width="28.5" stroke-dasharray="14 400" stroke-dashoffset="-132"/>
+          </g>
+
+          <!-- ==================================================== -->
+          <!-- LAYER 3: CAT TORSO & GEOMETRIC BODY                  -->
+          <!-- ==================================================== -->
+          <g id="cat-torso" filter="url(#tactileShadow)">
+            <!-- Main Geometric Bell Torso -->
+            <path d="M 164 280 C 154 325, 142 368, 146 392 C 149 406, 178 412, 250 412 C 322 412, 351 406, 354 392 C 358 368, 346 325, 336 280 Z" fill="url(#creamGrad)"/>
+            
+            <!-- Left Side Burnt Ginger Patch -->
+            <path d="M 160 295 C 195 305, 205 345, 185 385 C 165 385, 150 375, 147 360 C 149 335, 155 310, 160 295 Z" fill="url(#gingerGrad)"/>
+            
+            <!-- Right Shoulder Lavender-Obsidian Accent Patch -->
+            <path d="M 338 290 C 312 300, 308 335, 328 365 C 342 365, 350 355, 352 345 C 349 325, 343 305, 338 290 Z" fill="#232030"/>
+
+            <!-- Tactile Chest Shadow & Geometric Collar -->
+            <path d="M 175 282 Q 250 315 325 282 L 318 308 Q 250 335 182 308 Z" fill="url(#creamShadowGrad)"/>
+            
+            <!-- Teenage Engineering Style Collar Strap -->
+            <path d="M 176 286 Q 250 312 324 286" fill="none" stroke="#181720" stroke-width="10" stroke-linecap="round"/>
+            <path d="M 176 286 Q 250 312 324 286" fill="none" stroke="#FF5526" stroke-width="4" stroke-dasharray="12 8" stroke-linecap="round"/>
+
+            <!-- Hardware Collar Tag -->
+            <g transform="translate(250, 308)">
+              <rect x="-16" y="-8" width="32" height="20" rx="5" fill="#181720" stroke="#00F5D4" stroke-width="1.5"/>
+              <circle cx="-8" cy="2" r="2.5" fill="#00F5D4"/>
+              <text x="3" y="5" fill="#F5F4F0" font-family="JetBrains Mono" font-weight="700" font-size="8" text-anchor="middle">K1</text>
+            </g>
+          </g>
+
+          <!-- ==================================================== -->
+          <!-- LAYER 4: CAT HEAD, EARS & DYNAMIC TRACKING EYES      -->
+          <!-- ==================================================== -->
+          <g id="cat-head-outer">
+            <g id="cat-head-group" filter="url(#tactileShadow)">
+              
+              <!-- LEFT EAR -->
+              <g id="ear-left">
+                <path d="M 142 182 L 116 78 C 113 64, 126 56, 138 64 L 216 128 Z" fill="url(#obsidianGrad)" stroke="#2F2B42" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M 148 168 L 130 92 C 128 84, 136 80, 143 85 L 196 132 Z" fill="url(#innerEarGrad)" opacity="0.9"/>
+                <!-- Precision Ear Notch / Piercing Tag -->
+                <rect x="115" y="102" width="12" height="5" rx="2.5" transform="rotate(-14 115 102)" fill="#00F5D4"/>
+              </g>
+
+              <!-- RIGHT EAR -->
+              <g id="ear-right">
+                <path d="M 358 182 L 384 78 C 387 64, 374 56, 362 64 L 284 128 Z" fill="url(#obsidianGrad)" stroke="#2F2B42" stroke-width="1.5" stroke-linejoin="round"/>
+                <path d="M 352 168 L 370 92 C 372 84, 364 80, 357 85 L 304 132 Z" fill="url(#innerEarGrad)" opacity="0.9"/>
+                <!-- Ginger Right Ear Tip -->
+                <path d="M 384 78 C 387 64, 374 56, 362 64 L 340 82 L 376 110 Z" fill="url(#gingerGrad)"/>
+              </g>
+
+              <!-- MAIN HEAD SQUIRCLE CHASSIS -->
+              <rect x="130" y="118" width="240" height="176" rx="82" fill="url(#creamGrad)"/>
+
+              <!-- Underside Chin Bevel Shadow -->
+              <path d="M 135 232 C 135 275, 175 294, 250 294 C 325 294, 365 275, 365 232 C 365 266, 320 282, 250 282 C 180 282, 135 266, 135 232 Z" fill="url(#creamShadowGrad)"/>
+
+              <!-- Asymmetric Burnt Ginger Forehead & Eye Patch -->
+              <path d="M 250 118 C 312 118, 364 148, 369 205 C 345 225, 295 225, 272 195 C 255 172, 258 140, 250 118 Z" fill="url(#gingerGrad)"/>
+
+              <!-- Geometric Forehead M-Stripes -->
+              <g fill="#181720" opacity="0.88">
+                <rect x="246" y="126" width="8" height="32" rx="4"/>
+                <rect x="226" y="132" width="7" height="22" rx="3.5" transform="rotate(-12 226 132)"/>
+                <rect x="267" y="132" width="7" height="22" rx="3.5" transform="rotate(12 267 132)"/>
+              </g>
+
+              <!-- Cheek Blush / Subtle Tactile Accents -->
+              <ellipse cx="152" cy="242" rx="14" ry="7" fill="#FF5526" opacity="0.22"/>
+              <ellipse cx="348" cy="242" rx="14" ry="7" fill="#FF5526" opacity="0.28"/>
+
+              <!-- Tactile Whiskers -->
+              <g stroke="#A39BBE" stroke-width="3" stroke-linecap="round">
+                <!-- Left Whiskers -->
+                <line id="whisker-l1" x1="134" y1="224" x2="92" y2="214"/>
+                <line id="whisker-l2" x1="132" y1="238" x2="86" y2="238"/>
+                <line id="whisker-l3" x1="136" y1="252" x2="96" y2="262"/>
+                <!-- Right Whiskers -->
+                <line id="whisker-r1" x1="366" y1="224" x2="408" y2="214"/>
+                <line id="whisker-r2" x1="368" y1="238" x2="414" y2="238"/>
+                <line id="whisker-r3" x1="364" y1="252" x2="404" y2="262"/>
+              </g>
+
+              <!-- ========================================== -->
+              <!-- LEFT EYE SOCKET + TRIGONOMETRIC PUPIL      -->
+              <!-- ========================================== -->
+              <g id="eye-left-container">
+                <!-- Outer Socket Bezel -->
+                <circle cx="195" cy="212" r="38" fill="#0B0A10" stroke="#282538" stroke-width="2.5"/>
+                
+                <g clip-path="url(#clip-eye-left)">
+                  <!-- Deep Obsidian Sclera -->
+                  <circle cx="195" cy="212" r="35" fill="url(#obsidianGrad)"/>
+                  <!-- Subtle Grid Inside Eye -->
+                  <circle cx="195" cy="212" r="26" fill="none" stroke="#A39BBE" stroke-width="0.75" stroke-dasharray="3 3" opacity="0.25"/>
+
+                  <!-- MOVING PUPIL GROUP (Translated via JS Math.atan2) -->
+                  <g id="pupil-group-left">
+                    <!-- Outer Cyan/Emerald Iris Ring -->
+                    <circle id="pupil-iris-left" class="pupil-circle" cx="195" cy="212" r="20" fill="url(#pupilCyanGrad)" filter="url(#cyanGlowFilter)"/>
+                    <!-- Dark Core Pupil -->
+                    <circle id="pupil-core-left" class="pupil-circle" cx="195" cy="212" r="10" fill="#08090C"/>
+                    <!-- Crisp Specular Highlights -->
+                    <circle cx="187" cy="203" r="5.5" fill="#FFFFFF"/>
+                    <circle cx="204" cy="220" r="2.5" fill="#00F5D4"/>
+                  </g>
+
+                  <!-- Animated Eyelids for Blink / Chill / Squint -->
+                  <rect class="eyelid-top" x="150" y="138" width="90" height="42" fill="#232030" stroke="#FF5526" stroke-width="2"/>
+                  <rect class="eyelid-bottom" x="150" y="246" width="90" height="42" fill="#232030"/>
+                </g>
+              </g>
+
+              <!-- ========================================== -->
+              <!-- RIGHT EYE SOCKET + TRIGONOMETRIC PUPIL     -->
+              <!-- ========================================== -->
+              <g id="eye-right-container">
+                <!-- Outer Socket Bezel -->
+                <circle cx="305" cy="212" r="38" fill="#0B0A10" stroke="#282538" stroke-width="2.5"/>
+                
+                <g clip-path="url(#clip-eye-right)">
+                  <!-- Deep Obsidian Sclera -->
+                  <circle cx="305" cy="212" r="35" fill="url(#obsidianGrad)"/>
+                  <circle cx="305" cy="212" r="26" fill="none" stroke="#A39BBE" stroke-width="0.75" stroke-dasharray="3 3" opacity="0.25"/>
+
+                  <!-- MOVING PUPIL GROUP (Translated via JS Math.atan2) -->
+                  <g id="pupil-group-right">
+                    <circle id="pupil-iris-right" class="pupil-circle" cx="305" cy="212" r="20" fill="url(#pupilCyanGrad)" filter="url(#cyanGlowFilter)"/>
+                    <circle id="pupil-core-right" class="pupil-circle" cx="305" cy="212" r="10" fill="#08090C"/>
+                    <circle cx="297" cy="203" r="5.5" fill="#FFFFFF"/>
+                    <circle cx="314" cy="220" r="2.5" fill="#00F5D4"/>
+                  </g>
+
+                  <!-- Animated Eyelids -->
+                  <rect class="eyelid-top" x="260" y="138" width="90" height="42" fill="#232030" stroke="#FF5526" stroke-width="2"/>
+                  <rect class="eyelid-bottom" x="260" y="246" width="90" height="42" fill="#232030"/>
+                </g>
+              </g>
+
+              <!-- ========================================== -->
+              <!-- NOSE & DYNAMIC EXPRESSION MOUTH            -->
+              <!-- ========================================== -->
+              <g id="cat-muzzle">
+                <!-- Geometric Inverted Triangle Nose -->
+                <path d="M 242 232 H 258 C 261 232, 262 235, 260 238 L 253 245 C 251 247, 249 247, 247 245 L 240 238 C 238 235, 239 232, 242 232 Z" fill="#FF5526"/>
+                
+                <!-- Mouth Expressions -->
+                <g id="cat-mouth-group">
+                  <!-- Default ':3' W-Mouth -->
+                  <path id="mouth-normal" d="M 234 252 Q 242 260 250 250 Q 258 260 266 252" fill="none" stroke="#181720" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                  <!-- Surprised / Drag Hover 'O' Mouth -->
+                  <ellipse id="mouth-excited" cx="250" cy="256" rx="8" ry="10" fill="#181720" stroke="#FF5526" stroke-width="1.5" class="opacity-0 transition-opacity duration-200"/>
+                  <!-- Hacking Determined Grin -->
+                  <path id="mouth-hacking" d="M 235 253 H 265 L 260 261 H 240 Z" fill="#00F5D4" stroke="#181720" stroke-width="2.5" stroke-linejoin="round" class="opacity-0 transition-opacity duration-200"/>
+                </g>
+              </g>
+
+              <!-- ========================================== -->
+              <!-- CYBER VISOR GLASSES (Shown in Hacking)     -->
+              <!-- ========================================== -->
+              <g id="glasses-group" class="opacity-0 pointer-events-none">
+                <path d="M 145 195 H 242 L 250 202 L 258 195 H 355" fill="none" stroke="#00F5D4" stroke-width="3"/>
+                <rect x="150" y="185" width="90" height="44" rx="10" fill="#00F5D4" fill-opacity="0.15" stroke="#00F5D4" stroke-width="2.5"/>
+                <rect x="260" y="185" width="90" height="44" rx="10" fill="#00F5D4" fill-opacity="0.15" stroke="#00F5D4" stroke-width="2.5"/>
+                <!-- Matrix Glint Lines -->
+                <line x1="162" y1="222" x2="185" y2="192" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+                <line x1="272" y1="222" x2="295" y2="192" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+              </g>
+
+            </g>
+          </g>
+
+          <!-- ==================================================== -->
+          <!-- LAYER 5: FOREGROUND PAWS & STATE-SPECIFIC PROPS      -->
+          <!-- ==================================================== -->
+
+          <!-- 5A. DEFAULT EXTENDED PAWS (Visible in Idle, Drag, Report) -->
+          <g id="paws-standard-group" filter="url(#tactileShadow)">
+            <!-- Left Extended Paw -->
+            <g id="paw-left-idle">
+              <path d="M 162 350 C 154 378, 156 418, 186 418 C 214 418, 216 382, 208 350 Z" fill="url(#creamGrad)" stroke="#DFDDD4" stroke-width="1"/>
+              <!-- Ginger Spot on Left Paw -->
+              <path d="M 160 365 C 175 368, 185 385, 174 405 C 162 400, 158 382, 160 365 Z" fill="url(#gingerGrad)"/>
+              <!-- Tactile Toe Cloves -->
+              <line x1="176" y1="402" x2="176" y2="416" stroke="#B8B29E" stroke-width="3" stroke-linecap="round"/>
+              <line x1="194" y1="402" x2="194" y2="416" stroke="#B8B29E" stroke-width="3" stroke-linecap="round"/>
+            </g>
+
+            <!-- Right Extended Paw -->
+            <g id="paw-right-idle">
+              <path d="M 292 350 C 284 382, 286 418, 314 418 C 344 418, 346 378, 338 350 Z" fill="url(#creamGrad)" stroke="#DFDDD4" stroke-width="1"/>
+              <!-- Toe Cloves -->
+              <line x1="306" y1="402" x2="306" y2="416" stroke="#B8B29E" stroke-width="3" stroke-linecap="round"/>
+              <line x1="324" y1="402" x2="324" y2="416" stroke="#B8B29E" stroke-width="3" stroke-linecap="round"/>
+            </g>
+          </g>
+
+          <!-- 5B. PROP: TEENAGE ENGINEERING MECHANICAL KEYBOARD + DRUMMING PAWS (State 3: Hacking) -->
+          <g id="prop-keyboard" class="prop-hidden" filter="url(#tactileShadow)">
+            <!-- Holographic Projection Screen Glow -->
+            <polygon points="135,392 365,392 395,295 105,295" fill="url(#holoGrad)"/>
+            
+            <!-- Floating Telemetry / Hex Particles -->
+            <g font-family="JetBrains Mono" font-weight="700" font-size="11" fill="#00F5D4">
+              <text class="code-particle-1" x="145" y="355">0x7F_PARSE</text>
+              <text class="code-particle-2" x="235" y="345" fill="#FF5526">AST_OK!</text>
+              <text class="code-particle-3" x="310" y="360">SHA256</text>
+            </g>
+
+            <!-- Rapid Drumming Paws (Positioned above keys) -->
+            <g id="paw-left-hack">
+              <ellipse cx="195" cy="382" rx="24" ry="20" fill="url(#creamGrad)" stroke="#181720" stroke-width="2"/>
+              <circle cx="186" cy="390" r="3" fill="#FF5526"/>
+              <circle cx="195" cy="392" r="3" fill="#FF5526"/>
+              <circle cx="204" cy="390" r="3" fill="#FF5526"/>
+            </g>
+            <g id="paw-right-hack">
+              <ellipse cx="305" cy="382" rx="24" ry="20" fill="url(#creamGrad)" stroke="#181720" stroke-width="2"/>
+              <circle cx="296" cy="390" r="3" fill="#FF5526"/>
+              <circle cx="305" cy="392" r="3" fill="#FF5526"/>
+              <circle cx="314" cy="390" r="3" fill="#FF5526"/>
+            </g>
+
+            <!-- Aluminum Keyboard Chassis -->
+            <rect x="118" y="388" width="264" height="46" rx="10" fill="#1A1D29" stroke="#3B4259" stroke-width="2.5"/>
+            <rect x="124" y="394" width="252" height="34" rx="6" fill="#0D0F17"/>
+
+            <!-- Tactile Keycaps Row 1 -->
+            <g transform="translate(130, 398)">
+              <rect x="0" y="0" width="18" height="12" rx="3" fill="#FF5526"/>
+              <rect x="22" y="0" width="18" height="12" rx="3" fill="#F5F4F0"/>
+              <rect x="44" y="0" width="18" height="12" rx="3" fill="#F5F4F0"/>
+              <rect x="66" y="0" width="18" height="12" rx="3" fill="#00F5D4"/>
+              <rect x="88" y="0" width="18" height="12" rx="3" fill="#F5F4F0"/>
+              <rect x="110" y="0" width="18" height="12" rx="3" fill="#F5F4F0"/>
+              <rect x="132" y="0" width="18" height="12" rx="3" fill="#A39BBE"/>
+              <rect x="154" y="0" width="18" height="12" rx="3" fill="#F5F4F0"/>
+              <rect x="176" y="0" width="18" height="12" rx="3" fill="#00F5D4"/>
+              <rect x="198" y="0" width="18" height="12" rx="3" fill="#F5F4F0"/>
+              <rect x="220" y="0" width="20" height="12" rx="3" fill="#FF5526"/>
+            </g>
+            <!-- Tactile Keycaps Row 2 (Spacebar & Modifiers) -->
+            <g transform="translate(130, 413)">
+              <rect x="0" y="0" width="26" height="11" rx="3" fill="#6E768A"/>
+              <rect x="30" y="0" width="22" height="11" rx="3" fill="#F5F4F0"/>
+              <!-- Orange Spacebar -->
+              <rect x="56" y="0" width="126" height="11" rx="3" fill="#FF5526"/>
+              <rect x="186" y="0" width="22" height="11" rx="3" fill="#F5F4F0"/>
+              <rect x="212" y="0" width="28" height="11" rx="3" fill="#00F5D4"/>
+            </g>
+          </g>
+
+          <!-- 5C. PROP: REPORT DELIVERY ENVELOPE (State 4: Report Complete) -->
+          <g id="prop-envelope" class="prop-hidden cursor-pointer" filter="url(#tactileShadow)">
+            <!-- Floating Telemetry Badge -->
+            <g transform="translate(250, 326)">
+              <rect x="-68" y="-14" width="136" height="22" rx="11" fill="#08090C" stroke="#00F5D4" stroke-width="1.5"/>
+              <circle cx="-54" cy="-3" r="3.5" fill="#00F5D4"/>
+              <text x="6" y="1" fill="#00F5D4" font-family="JetBrains Mono" font-size="9.5" font-weight="700" text-anchor="middle">CLICK TO OPEN</text>
+            </g>
+
+            <!-- Tactile Cream Envelope Body -->
+            <g transform="translate(155, 348)">
+              <rect x="0" y="0" width="190" height="92" rx="12" fill="#FAF8F2" stroke="#D2CCB8" stroke-width="2.5"/>
+              
+              <!-- Pop-up Report Card Peeking Out -->
+              <rect x="14" y="-12" width="162" height="45" rx="6" fill="#181720" stroke="#00F5D4" stroke-width="1.5"/>
+              <line x1="28" y1="-1" x2="95" y2="-1" stroke="#00F5D4" stroke-width="3" stroke-linecap="round"/>
+              <line x1="28" y1="8" x2="145" y2="8" stroke="#A39BBE" stroke-width="2.5" stroke-linecap="round"/>
+              <rect x="132" y="-5" width="32" height="12" rx="3" fill="#FF5526"/>
+              <text x="148" y="4" fill="#08090C" font-family="JetBrains Mono" font-weight="700" font-size="7.5" text-anchor="middle">100%</text>
+
+              <!-- Envelope Bottom Flaps -->
+              <path d="M 2 90 L 95 42 L 188 90" fill="#EBE7DC" stroke="#D2CCB8" stroke-width="2" stroke-linejoin="round"/>
+              <!-- Envelope Top Fold -->
+              <path d="M 2 4 L 95 54 L 188 4" fill="#F5F4F0" stroke="#D2CCB8" stroke-width="2.5" stroke-linejoin="round"/>
+
+              <!-- Burnt Ginger Wax / Hardware Seal -->
+              <g id="wax-seal" transform="translate(95, 50)">
+                <circle cx="0" cy="0" r="18" fill="url(#gingerGrad)" stroke="#FAF8F2" stroke-width="2.5"/>
+                <!-- Cat Paw Emboss inside Seal -->
+                <circle cx="0" cy="3" r="5" fill="#FAF8F2"/>
+                <circle cx="-6" cy="-5" r="2.5" fill="#FAF8F2"/>
+                <circle cx="0" cy="-7" r="2.5" fill="#FAF8F2"/>
+                <circle cx="6" cy="-5" r="2.5" fill="#FAF8F2"/>
+              </g>
+            </g>
+          </g>
+
+          <!-- 5D. PROP: STEAMING COFFEE MUG HELD BY BOTH PAWS (State 5: Chill) -->
+          <g id="prop-coffee-group" class="prop-hidden" filter="url(#tactileShadow)">
+            <g id="prop-coffee-Lift">
+              <!-- Rising Steam Wisps -->
+              <g fill="none" stroke="#F5F4F0" stroke-width="3" stroke-linecap="round" opacity="0.65">
+                <path class="steam-wisp-1" d="M 232 325 C 224 310, 240 295, 232 280"/>
+                <path class="steam-wisp-2" d="M 250 320 C 258 304, 242 288, 250 272"/>
+                <path class="steam-wisp-3" d="M 268 325 C 260 310, 276 295, 268 280"/>
+              </g>
+
+              <!-- Mug Handle -->
+              <path d="M 290 350 H 308 C 318 350, 318 386, 308 386 H 290" fill="none" stroke="#FF5526" stroke-width="10" stroke-linecap="round"/>
+
+              <!-- Matte Obsidian Ceramic Mug Body -->
+              <rect x="210" y="334" width="82" height="72" rx="14" fill="#181720" stroke="#343146" stroke-width="2.5"/>
+              <!-- Mug Rim & Rich Espresso Surface -->
+              <ellipse cx="251" cy="336" rx="40" ry="8" fill="#322C3B" stroke="#F5F4F0" stroke-width="2"/>
+              <ellipse cx="251" cy="337" rx="34" ry="5" fill="#6F3818"/>
+
+              <!-- Graphic Print on Mug ("MEOW // OS") -->
+              <rect x="225" y="356" width="52" height="22" rx="4" fill="#FF5526"/>
+              <text x="251" y="371" fill="#08090C" font-family="JetBrains Mono" font-weight="700" font-size="10" text-anchor="middle">BREW.OS</text>
+
+              <!-- Both Paws Cozy Wrapping the Mug -->
+              <ellipse cx="212" cy="372" rx="22" ry="18" transform="rotate(14 212 372)" fill="url(#creamGrad)" stroke="#181720" stroke-width="2"/>
+              <ellipse cx="290" cy="372" rx="22" ry="18" transform="rotate(-14 290 372)" fill="url(#creamGrad)" stroke="#181720" stroke-width="2"/>
+            </g>
+          </g>
+
+          <!-- ==================================================== -->
+          <!-- LAYER 6: UNHINGED CLAW SCRATCH OVERLAY (0.3s FX)     -->
+          <!-- ==================================================== -->
+          <g id="claw-slash-overlay" class="pointer-events-none" filter="url(#clawGlowFilter)">
+            <!-- White-hot Screen Flash -->
+            <rect id="claw-flash-rect" x="0" y="0" width="500" height="490" rx="30" fill="#FF5526" opacity="0" class="transition-opacity duration-150"/>
+            
+            <!-- 4 Jagged Diagonal Claw Tears across the viewport -->
+            <path class="slash-line slash-1" d="M 45 45 L 165 150 L 152 162 L 310 300 L 298 312 L 455 445" fill="none" stroke="#F5F4F0" stroke-linecap="round" stroke-linejoin="round"/>
+            <path class="slash-line slash-2" d="M 95 25 L 225 145 L 210 158 L 365 295 L 480 400" fill="none" stroke="#00F5D4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path class="slash-line slash-3" d="M 20 110 L 145 220 L 290 345 L 278 358 L 415 470" fill="none" stroke="#FF5526" stroke-linecap="round" stroke-linejoin="round"/>
+            <path class="slash-line slash-4" d="M 155 15 L 285 130 L 420 255 L 490 325" fill="none" stroke="#F5F4F0" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+
+        </svg>
+
+        <!-- INTERACTIVE REPORT MODAL OVERLAY (Opens when clicking envelope or inspecting report) -->
+        <div id="report-modal" class="hidden absolute inset-x-4 top-8 bottom-8 bg-[#10121A]/95 border-2 border-[#00F5D4] rounded-2xl p-5 shadow-2xl backdrop-blur-xl flex-col justify-between z-30">
+          <div class="flex items-center justify-between border-b border-[#23283B] pb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#00F5D4]"></span>
+              <span class="font-mono-tech text-xs font-bold text-[#F5F4F0] uppercase tracking-wider">PAW-SCAN TELEMETRY REPORT // VERIFIED</span>
+            </div>
+            <button id="btn-close-report" class="text-xs font-mono-tech px-2.5 py-1 rounded bg-[#23283B] text-[#F5F4F0] hover:bg-[#FF5526] hover:text-[#08090C] transition-colors">
+              [ESC / CLOSE]
+            </button>
+          </div>
+
+          <div class="my-auto space-y-3 font-mono-tech text-xs">
+            <div class="p-3 rounded-xl bg-[#08090C] border border-[#1E2230] flex justify-between items-center">
+              <span class="text-[#A39BBE]">PAYLOAD NAME:</span>
+              <span id="report-filename" class="text-[#00F5D4] font-bold truncate max-w-[220px]">quantum_catnip_v2.tsx</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2.5">
+              <div class="p-2.5 rounded-xl bg-[#08090C] border border-[#1E2230]">
+                <div class="text-[10px] text-[#6E768A]">CLAW HASH</div>
+                <div id="report-hash" class="text-[#F5F4F0] font-semibold mt-0.5">0x9F4A..E1</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-[#08090C] border border-[#1E2230]">
+                <div class="text-[10px] text-[#6E768A]">PURR LATENCY</div>
+                <div class="text-[#00F5D4] font-semibold mt-0.5">0.29 ms</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-[#08090C] border border-[#1E2230]">
+                <div class="text-[10px] text-[#6E768A]">VIBES CHECK</div>
+                <div class="text-[#FF5526] font-semibold mt-0.5">IMMACULATE</div>
+              </div>
+            </div>
+            <p class="text-[#A39BBE] text-[11px] leading-relaxed bg-[#161924] p-3 rounded-xl border border-[#23283B]">
+              > KITT-01 shredded 0 syntax errors, formatted 1,420 tokens at 320 WPM, and is now sipping single-origin espresso while you review.
+            </p>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2 border-t border-[#23283B]">
+            <button id="btn-chill-from-modal" class="te-btn te-btn-orange px-4 py-2 rounded-xl text-xs font-mono-tech">
+              LET CAT SIP COFFEE ☕
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================================================== -->
+      <!-- EDITORIAL SPEECH BUBBLE & TYPOGRAPHY READOUT         -->
+      <!-- ==================================================== -->
+      <div id="speech-bubble-card" class="speech-pill relative -mt-3 px-6 py-3.5 rounded-2xl bg-[#F5F4F0] text-[#08090C] shadow-[0_14px_30px_rgba(0,0,0,0.65)] border-2 border-[#08090C] flex items-center gap-3.5 max-w-md">
+        <!-- Upward Speech Pointer Triangle -->
+        <div class="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 bg-[#F5F4F0] rotate-45 rounded-sm"></div>
+        
+        <!-- State Badge Icon inside Speech Bubble -->
+        <span id="speech-tag" class="px-2 py-0.5 rounded-md bg-[#08090C] text-[#00F5D4] font-mono-tech text-[10px] font-bold uppercase tracking-wider shrink-0">
+          IDLE
+        </span>
+
+        <!-- Dynamic Editorial Copy -->
+        <p id="speech-text" class="font-bold text-sm sm:text-base tracking-tight leading-snug">
+          meowww give me ur files meowww
+        </p>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="w-full max-w-5xl mx-auto z-20">
+    <div class="te-chassis rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      
+      <!-- State Trigger Buttons (1 to 5 + Auto Sequence) -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 w-full">
+        
+        <!-- 1. IDLE STATE -->
+        <button data-state="idle" class="state-btn te-btn active-state px-3 py-2.5 rounded-xl flex flex-col items-start gap-1 text-left">
+          <div class="flex items-center justify-between w-full">
+            <span class="font-mono-tech text-[10px] text-[#6E768A]">01 // TRACK</span>
+            <span class="led-dot w-2 h-2 rounded-full bg-[#32384D] transition-all"></span>
+          </div>
+          <span class="font-bold text-xs text-[#F5F4F0]">IDLE STATE</span>
+        </button>
+
+        <!-- 2. DRAG HOVER STATE -->
+        <button data-state="drag" class="state-btn te-btn px-3 py-2.5 rounded-xl flex flex-col items-start gap-1 text-left">
+          <div class="flex items-center justify-between w-full">
+            <span class="font-mono-tech text-[10px] text-[#6E768A]">02 // ANTICIPATE</span>
+            <span class="led-dot w-2 h-2 rounded-full bg-[#32384D] transition-all"></span>
+          </div>
+          <span class="font-bold text-xs text-[#F5F4F0]">DRAG HOVER</span>
+        </button>
+
+        <!-- 3. FILE DROP / CLAW SCRATCH + HACK -->
+        <button data-state="hacking" class="state-btn te-btn px-3 py-2.5 rounded-xl flex flex-col items-start gap-1 text-left">
+          <div class="flex items-center justify-between w-full">
+            <span class="font-mono-tech text-[10px] text-[#FF5526]">03 // SLASH+HACK</span>
+            <span class="led-dot w-2 h-2 rounded-full bg-[#32384D] transition-all"></span>
+          </div>
+          <span class="font-bold text-xs text-[#F5F4F0]">FILE DROP!</span>
+        </button>
+
+        <!-- 4. REPORT DELIVERY -->
+        <button data-state="report" class="state-btn te-btn px-3 py-2.5 rounded-xl flex flex-col items-start gap-1 text-left">
+          <div class="flex items-center justify-between w-full">
+            <span class="font-mono-tech text-[10px] text-[#6E768A]">04 // DELIVER</span>
+            <span class="led-dot w-2 h-2 rounded-full bg-[#32384D] transition-all"></span>
+          </div>
+          <span class="font-bold text-xs text-[#F5F4F0]">SEND REPORT ✉️</span>
+        </button>
+
+        <!-- 5. READING / CHILL COFFEE -->
+        <button data-state="chill" class="state-btn te-btn px-3 py-2.5 rounded-xl flex flex-col items-start gap-1 text-left">
+          <div class="flex items-center justify-between w-full">
+            <span class="font-mono-tech text-[10px] text-[#6E768A]">05 // RELAX</span>
+            <span class="led-dot w-2 h-2 rounded-full bg-[#32384D] transition-all"></span>
+          </div>
+          <span class="font-bold text-xs text-[#F5F4F0]">SIP COFFEE ☕</span>
+        </button>
+
+        <!-- FULL CHOREOGRAPHY DEMO -->
+        <button id="btn-auto-demo" class="te-btn te-btn-orange px-3 py-2.5 rounded-xl flex flex-col justify-between text-left">
+          <div class="flex items-center justify-between w-full">
+            <span class="font-mono-tech text-[10px] text-[#08090C]/80 font-bold">AUTO FLOW</span>
+            <svg class="w-3.5 h-3.5 text-[#08090C]" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+          <span class="font-bold text-xs text-[#08090C]">RUN FULL DEMO</span>
+        </button>
+
+      </div>
+
+    </div>
+  </footer>
+
+  <script>
+    /**
+     * KITT-01 PROCEDURAL SOUND ENGINE (Zero External Audio Files)
+     * Uses Web Audio API to synthesize Teenage Engineering-style clicks, claw slashes, key-taps, and chimes.
+     */
+    class TactileSynth {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.hackInterval = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Crisp mechanical switch click
+      playClick(pitch = 800) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(pitch, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.035);
+
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.04);
+      }
+
+      // Ear perk / Drag hover rising synth
+      playPerkUp() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(780, now + 0.16);
+
+        gain.gain.setValueAtTime(0.14, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.18);
+      }
+
+      // Dramatic 0.3s Claw Slash noise burst
+      playClawSlash() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        // White noise buffer for rip sound
+        const bufferSize = this.ctx.sampleRate * 0.28;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.09));
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(2400, now);
+        filter.frequency.exponentialRampToValueAtTime(480, now + 0.26);
+        filter.Q.value = 1.8;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.45, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.27);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(now);
+      }
+
+      // Mechanical keyboard thap-thap loop
+      startTypingLoop() {
+        this.stopTypingLoop();
+        this.hackInterval = setInterval(() => {
+          if (!this.enabled) return;
+          const randomPitch = 450 + Math.random() * 550;
+          this.playClick(randomPitch);
+        }, 85);
+      }
+
+      stopTypingLoop() {
+        if (this.hackInterval) {
+          clearInterval(this.hackInterval);
+          this.hackInterval = null;
+        }
+      }
+
+      // Pleasant 2-note delivery chime
+      playDeliveryChime() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const notes = [587.33, 880, 1174.66]; // D5, A5, D6
+        notes.forEach((freq, idx) => {
+          const now = this.ctx.currentTime + idx * 0.075;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.36);
+        });
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const synth = new TactileSynth();
+
+      // DOM Elements
+      const mascotSvg = document.getElementById('mascot-svg');
+      const svgViewport = document.getElementById('svg-viewport');
+      const clawOverlay = document.getElementById('claw-slash-overlay');
+      const clawFlashRect = document.getElementById('claw-flash-rect');
+
+      // Pupil & Anatomy Elements
+      const pupilGroupLeft = document.getElementById('pupil-group-left');
+      const pupilGroupRight = document.getElementById('pupil-group-right');
+      const pupilIrisLeft = document.getElementById('pupil-iris-left');
+      const pupilIrisRight = document.getElementById('pupil-iris-right');
+      const pupilCoreLeft = document.getElementById('pupil-core-left');
+      const pupilCoreRight = document.getElementById('pupil-core-right');
+      const catHeadGroup = document.getElementById('cat-head-group');
+
+      // Mouth & Glasses
+      const mouthNormal = document.getElementById('mouth-normal');
+      const mouthExcited = document.getElementById('mouth-excited');
+      const mouthHacking = document.getElementById('mouth-hacking');
+      const glassesGroup = document.getElementById('glasses-group');
+
+      // Paws & Props
+      const pawsStandardGroup = document.getElementById('paws-standard-group');
+      const propKeyboard = document.getElementById('prop-keyboard');
+      const propEnvelope = document.getElementById('prop-envelope');
+      const propCoffeeGroup = document.getElementById('prop-coffee-group');
+
+      // Tail Paths
+      const tailMainPath = document.getElementById('tail-main-path');
+      const tailGingerTip = document.getElementById('tail-ginger-tip');
+      const tailObsidianBand = document.getElementById('tail-obsidian-band');
+
+      // Speech & HUD Elements
+      const speechCard = document.getElementById('speech-bubble-card');
+      const speechTag = document.getElementById('speech-tag');
+      const speechText = document.getElementById('speech-text');
+      const hudStateLabel = document.getElementById('hud-state-label');
+      const hudVectorLabel = document.getElementById('hud-vector-label');
+      const stageStatusBadge = document.getElementById('stage-status-badge');
+      const stageStatusDot = document.getElementById('stage-status-dot');
+
+      // Controls & Modal
+      const stateButtons = document.querySelectorAll('.state-btn');
+      const btnAutoDemo = document.getElementById('btn-auto-demo');
+      const btnSfxToggle = document.getElementById('btn-sfx-toggle');
+      const sfxLed = document.getElementById('sfx-led');
+      const sfxText = document.getElementById('sfx-text');
+      const fileInput = document.getElementById('hidden-file-input');
+      const reportModal = document.getElementById('report-modal');
+      const reportFilename = document.getElementById('report-filename');
+      const reportHash = document.getElementById('report-hash');
+      const btnCloseReport = document.getElementById('btn-close-report');
+      const btnChillFromModal = document.getElementById('btn-chill-from-modal');
+
+      // State Variables
+      let currentState = 'idle';
+      let demoTimeouts = [];
+      let lastDroppedFile = 'wispr_audio_engine.rs';
+
+      // Mouse Tracking Coordinates (Normalized to SVG 500x490 space)
+      let pointerSVG = { x: 250, y: 260 };
+      let currentLeftPupil = { x: 0, y: 0 };
+      let currentRightPupil = { x: 0, y: 0 };
+      let currentHeadTilt = { x: 0, y: 0 };
+
+      // Tail Spring Physics Parameters
+      let tailPhase = 0;
+      let tailSpeed = 0.042;
+      let tailAmplitude = 24;
+
+      // =========================================================================
+      // 1. SMOOTH TRIGONOMETRIC CURSOR TRACKING (Math.atan2 + Lerp)
+      // =========================================================================
+      function updatePointerPosition(clientX, clientY) {
+        const rect = mascotSvg.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+
+        const scaleX = 500 / rect.width;
+        const scaleY = 490 / rect.height;
+
+        pointerSVG.x = (clientX - rect.left) * scaleX;
+        pointerSVG.y = (clientY - rect.top) * scaleY;
+      }
+
+      window.addEventListener('mousemove', (e) => {
+        updatePointerPosition(e.clientX, e.clientY);
+      });
+
+      window.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches[0]) {
+          updatePointerPosition(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      // Main 60fps Animation Loop for Eyes & Spring Tail
+      function animateLoop() {
+        // Eye socket centers in SVG viewBox coordinates
+        const leftCenter = { x: 195, y: 212 };
+        const rightCenter = { x: 305, y: 212 };
+
+        let targetLeft = { x: 0, y: 0 };
+        let targetRight = { x: 0, y: 0 };
+        let maxRadius = 11.5;
+
+        if (currentState === 'hacking') {
+          // Rapid horizontal scanning while hacking lines of code
+          const scanX = Math.sin(performance.now() * 0.025) * 9;
+          targetLeft = { x: scanX, y: 11 };
+          targetRight = { x: scanX, y: 11 };
+        } else if (currentState === 'chill') {
+          // Relaxed downward gaze at the warm coffee mug
+          targetLeft = { x: Math.sin(performance.now() * 0.001) * 3, y: 8 };
+          targetRight = { x: Math.sin(performance.now() * 0.001) * 3, y: 8 };
+        } else {
+          // Dynamic Math.atan2 Trigonometric Cursor Tracking
+          const dxL = pointerSVG.x - leftCenter.x;
+          const dyL = pointerSVG.y - leftCenter.y;
+          const angleL = Math.atan2(dyL, dxL);
+          const distL = Math.min(maxRadius, Math.hypot(dxL, dyL) * 0.075);
+
+          targetLeft.x = Math.cos(angleL) * distL;
+          targetLeft.y = Math.sin(angleL) * distL;
+
+          const dxR = pointerSVG.x - rightCenter.x;
+          const dyR = pointerSVG.y - rightCenter.y;
+          const angleR = Math.atan2(dyR, dxR);
+          const distR = Math.min(maxRadius, Math.hypot(dxR, dyR) * 0.075);
+
+          targetRight.x = Math.cos(angleR) * distR;
+          targetRight.y = Math.sin(angleR) * distR;
+
+          // Update Telemetry HUD Vector Readout
+          const deg = ((angleL * 180) / Math.PI).toFixed(1);
+          hudVectorLabel.textContent = `${deg >= 0 ? '+' : ''}${deg}° / ${distL.toFixed(1)}px`;
+        }
+
+        // Smooth interpolation (Lerp) for organic eye movement
+        const lerpFactor = 0.18;
+        currentLeftPupil.x += (targetLeft.x - currentLeftPupil.x) * lerpFactor;
+        currentLeftPupil.y += (targetLeft.y - currentLeftPupil.y) * lerpFactor;
+        currentRightPupil.x += (targetRight.x - currentRightPupil.x) * lerpFactor;
+        currentRightPupil.y += (targetRight.y - currentRightPupil.y) * lerpFactor;
+
+        pupilGroupLeft.setAttribute(
+          'transform',
+          `translate(${currentLeftPupil.x.toFixed(2)}, ${currentLeftPupil.y.toFixed(2)})`
+        );
+        pupilGroupRight.setAttribute(
+          'transform',
+          `translate(${currentRightPupil.x.toFixed(2)}, ${currentRightPupil.y.toFixed(2)})`
+        );
+
+        // Subtle head parallax towards cursor in idle/drag/report
+        if (currentState !== 'hacking') {
+          const headTargetX = (currentLeftPupil.x + currentRightPupil.x) * 0.28;
+          const headTargetY = (currentLeftPupil.y + currentRightPupil.y) * 0.22;
+          currentHeadTilt.x += (headTargetX - currentHeadTilt.x) * 0.1;
+          currentHeadTilt.y += (headTargetY - currentHeadTilt.y) * 0.1;
+          catHeadGroup.style.transform = `translate(${currentHeadTilt.x.toFixed(2)}px, ${currentHeadTilt.y.toFixed(2)}px)`;
+        } else {
+          catHeadGroup.style.transform = 'translate(0px, 0px)';
+        }
+
+        // =========================================================================
+        // 2. RHYTHMIC SPRING TAIL WAVE GENERATOR
+        // =========================================================================
+        tailPhase += tailSpeed;
+        const wave1 = Math.sin(tailPhase) * tailAmplitude;
+        const wave2 = Math.cos(tailPhase * 0.85) * (tailAmplitude * 0.65);
+
+        const c1x = (398 + wave1 * 0.4).toFixed(1);
+        const c1y = (368 - Math.abs(wave1) * 0.3).toFixed(1);
+        const c2x = (442 + wave1).toFixed(1);
+        const c2y = (305 + wave2 * 0.5).toFixed(1);
+        const endX = (418 + wave1 * 1.25).toFixed(1);
+        const endY = (242 + wave2).toFixed(1);
+
+        const tailD = `M 330 365 C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
+        tailMainPath.setAttribute('d', tailD);
+        tailGingerTip.setAttribute('d', tailD);
+        tailObsidianBand.setAttribute('d', tailD);
+
+        requestAnimationFrame(animateLoop);
+      }
+
+      requestAnimationFrame(animateLoop);
+
+      // =========================================================================
+      // 3. NATURAL ORGANIC BLINK SCHEDULER
+      // =========================================================================
+      function scheduleBlink() {
+        const nextDelay = currentState === 'chill'
+          ? 2000 + Math.random() * 1800
+          : 2800 + Math.random() * 3400;
+
+        setTimeout(() => {
+          if (currentState !== 'drag') {
+            mascotSvg.classList.add('blinking');
+            const blinkDuration = currentState === 'chill' ? 320 : 150;
+            setTimeout(() => {
+              mascotSvg.classList.remove('blinking');
+            }, blinkDuration);
+          }
+          scheduleBlink();
+        }, nextDelay);
+      }
+      scheduleBlink();
+
+      // =========================================================================
+      // 4. STATE MACHINE & CHOREOGRAPHY CONTROLLER
+      // =========================================================================
+      function clearDemoTimers() {
+        demoTimeouts.forEach((t) => clearTimeout(t));
+        demoTimeouts = [];
+      }
+
+      function updateSpeechBubble(tagText, tagColor, message) {
+        speechCard.classList.add('speech-pop');
+        setTimeout(() => {
+          speechTag.textContent = tagText;
+          speechTag.style.color = tagColor;
+          speechText.textContent = message;
+          speechCard.classList.remove('speech-pop');
+        }, 120);
+      }
+
+      function triggerClawSlashVisual() {
+        synth.playClawSlash();
+
+        // Screen shake on viewport
+        svgViewport.classList.remove('claw-impact-shake');
+        void svgViewport.offsetWidth; // Force reflow
+        svgViewport.classList.add('claw-impact-shake');
+
+        // Flash & Jagged SVG Slashes
+        clawFlashRect.style.opacity = '0.28';
+        clawOverlay.classList.remove('slash-active');
+        void clawOverlay.offsetWidth;
+        clawOverlay.classList.add('slash-active');
+
+        setTimeout(() => {
+          clawFlashRect.style.opacity = '0';
+        }, 140);
+      }
+
+      function setMascotState(newState, options = { triggerSlash: true }) {
+        currentState = newState;
+        synth.stopTypingLoop();
+        reportModal.classList.add('hidden');
+        reportModal.classList.remove('flex');
+
+        // Update active state on bottom hardware buttons
+        stateButtons.forEach((btn) => {
+          if (btn.dataset.state === newState) {
+            btn.classList.add('active-state');
+          } else {
+            btn.classList.remove('active-state');
+          }
+        });
+
+        // Reset SVG state classes
+        mascotSvg.classList.remove(
+          'state-idle',
+          'state-drag',
+          'state-hacking',
+          'state-report',
+          'state-chill'
+        );
+        mascotSvg.classList.add(`state-${newState}`);
+
+        // Reset Mouth & Glasses visibility
+        mouthNormal.style.opacity = '1';
+        mouthExcited.style.opacity = '0';
+        mouthHacking.style.opacity = '0';
+        glassesGroup.style.opacity = '0';
+
+        // Reset Props visibility
+        pawsStandardGroup.style.opacity = '1';
+        propKeyboard.classList.replace('prop-visible', 'prop-hidden');
+        propEnvelope.classList.replace('prop-visible', 'prop-hidden');
+        propCoffeeGroup.classList.replace('prop-visible', 'prop-hidden');
+
+        // Default Pupil Radii
+        pupilIrisLeft.setAttribute('r', '20');
+        pupilIrisRight.setAttribute('r', '20');
+        pupilCoreLeft.setAttribute('r', '10');
+        pupilCoreRight.setAttribute('r', '10');
+
+        // Configure per-state choreography
+        switch (newState) {
+          case 'idle':
+            tailSpeed = 0.042;
+            tailAmplitude = 24;
+            hudStateLabel.textContent = '01_IDLE_WAIT';
+            stageStatusBadge.textContent = 'DRAG ANY FILE OVER STAGE OR CLICK BROWSE';
+            stageStatusDot.className = 'w-2 h-2 rounded-full bg-[#00F5D4] animate-pulse';
+            updateSpeechBubble('IDLE', '#00F5D4', 'meowww give me ur files meowww');
+            synth.playClick(620);
+            break;
+
+          case 'drag':
+            tailSpeed = 0.095;
+            tailAmplitude = 34;
+            // Dilate eyes wide in anticipation!
+            pupilIrisLeft.setAttribute('r', '25');
+            pupilIrisRight.setAttribute('r', '25');
+            pupilCoreLeft.setAttribute('r', '15');
+            pupilCoreRight.setAttribute('r', '15');
+            mouthNormal.style.opacity = '0';
+            mouthExcited.style.opacity = '1';
+
+            hudStateLabel.textContent = '02_DRAG_TARGET_LOCKED';
+            stageStatusBadge.textContent = 'RELEASE FILE TO UNLEASH CLAW PARSER!';
+            stageStatusDot.className = 'w-2 h-2 rounded-full bg-[#FF5526] animate-ping';
+            updateSpeechBubble('LOCKED', '#FF5526', 'O_O DROP IT RIGHT HERE MEOWWW!!');
+            synth.playPerkUp();
+            break;
+
+          case 'hacking':
+            if (options.triggerSlash) {
+              triggerClawSlashVisual();
+            }
+            tailSpeed = 0.18;
+            tailAmplitude = 16;
+            // Pinpoint focused laser pupils + cyber visor glasses
+            pupilIrisLeft.setAttribute('r', '16');
+            pupilIrisRight.setAttribute('r', '16');
+            pupilCoreLeft.setAttribute('r', '6');
+            pupilCoreRight.setAttribute('r', '6');
+            mouthNormal.style.opacity = '0';
+            mouthHacking.style.opacity = '1';
+            glassesGroup.style.opacity = '1';
+
+            // Hide idle paws, show mechanical keyboard & drumming paws
+            pawsStandardGroup.style.opacity = '0';
+            propKeyboard.classList.replace('prop-hidden', 'prop-visible');
+
+            hudStateLabel.textContent = '03_CLAW_HACKING_320WPM';
+            stageStatusBadge.textContent = `SHREDDING & ANALYZING: ${lastDroppedFile.toUpperCase()}`;
+            stageStatusDot.className = 'w-2 h-2 rounded-full bg-[#FF5526] animate-pulse';
+            updateSpeechBubble('HACKING', '#FF5526', '*thap-thap-thap* parsing bytes at 320 WPM...');
+            synth.startTypingLoop();
+            break;
+
+          case 'report':
+            tailSpeed = 0.05;
+            tailAmplitude = 20;
+            propEnvelope.classList.replace('prop-hidden', 'prop-visible');
+
+            hudStateLabel.textContent = '04_REPORT_DELIVERED';
+            stageStatusBadge.textContent = 'SCAN COMPLETE // CLICK ENVELOPE TO INSPECT';
+            stageStatusDot.className = 'w-2 h-2 rounded-full bg-[#00F5D4]';
+            updateSpeechBubble('DONE ✉️', '#00F5D4', "Meowww! Here's ur report ✉️");
+            synth.playDeliveryChime();
+            break;
+
+          case 'chill':
+            tailSpeed = 0.022;
+            tailAmplitude = 12;
+            pawsStandardGroup.style.opacity = '0';
+            propCoffeeGroup.classList.replace('prop-hidden', 'prop-visible');
+
+            hudStateLabel.textContent = '05_ESPRESSO_CHILL_MODE';
+            stageStatusBadge.textContent = 'READING MODE // CAT IS SIPPING ARTISAN ROAST';
+            stageStatusDot.className = 'w-2 h-2 rounded-full bg-[#A39BBE]';
+            updateSpeechBubble('CHILL ☕', '#A39BBE', '*sippp* take ur time reading, hooman ☕');
+            synth.playClick(420);
+            break;
+        }
+      }
+
+      // =========================================================================
+      // 5. FULL CHOREOGRAPHY PIPELINE (Triggered on File Drop or Auto Demo)
+      // =========================================================================
+      function runFileDropPipeline(filename = 'neural_mascot_spec.pdf') {
+        clearDemoTimers();
+        lastDroppedFile = filename;
+        reportFilename.textContent = filename;
+        reportHash.textContent = '0x' + Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase() + '..F9';
+
+        // Step 1: Unhinged Claw Scratch + Hyper Hacking (2.4s)
+        setMascotState('hacking', { triggerSlash: true });
+
+        // Step 2: Slide Report Envelope Forward (after 2.4s)
+        demoTimeouts.push(
+          setTimeout(() => {
+            setMascotState('report');
+          }, 2400)
+        );
+
+        // Step 3: Transition to Chill Coffee Sipping while user reads (after 5.6s)
+        demoTimeouts.push(
+          setTimeout(() => {
+            if (currentState === 'report') {
+              setMascotState('chill');
+            }
+          }, 5600)
+        );
+      }
+
+      // Auto Demo Button (Plays Drag -> Drop/Slash -> Report -> Chill)
+      btnAutoDemo.addEventListener('click', () => {
+        clearDemoTimers();
+        setMascotState('drag');
+
+        demoTimeouts.push(
+          setTimeout(() => {
+            runFileDropPipeline('teenage_eng_synth.wav');
+          }, 1200)
+        );
+      });
+
+      // Manual Hardware State Buttons
+      stateButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          clearDemoTimers();
+          const target = btn.dataset.state;
+          setMascotState(target, { triggerSlash: true });
+        });
+      });
+
+      // =========================================================================
+      // 6. WINDOW DRAG & DROP FILE LISTENERS
+      // =========================================================================
+      let dragCounter = 0;
+
+      window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        if (currentState !== 'drag') {
+          clearDemoTimers();
+          setMascotState('drag');
+        }
+      });
+
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        updatePointerPosition(e.clientX, e.clientY);
+      });
+
+      window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          if (currentState === 'drag') {
+            setMascotState('idle');
+          }
+        }
+      });
+
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        const droppedFiles = e.dataTransfer?.files;
+        const fileName = droppedFiles && droppedFiles.length > 0
+          ? droppedFiles[0].name
+          : 'dropped_payload.json';
+        runFileDropPipeline(fileName);
+      });
+
+      // Hidden File Input Browser Trigger
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          runFileDropPipeline(e.target.files[0].name);
+          fileInput.value = '';
+        }
+      });
+
+      // =========================================================================
+      // 7. ENVELOPE CLICK & REPORT TELEMETRY MODAL
+      // =========================================================================
+      propEnvelope.addEventListener('click', () => {
+        clearDemoTimers();
+        synth.playClick(980);
+        reportModal.classList.remove('hidden');
+        reportModal.classList.add('flex');
+      });
+
+      btnCloseReport.addEventListener('click', () => {
+        synth.playClick(520);
+        reportModal.classList.add('hidden');
+        reportModal.classList.remove('flex');
+      });
+
+      btnChillFromModal.addEventListener('click', () => {
+        reportModal.classList.add('hidden');
+        reportModal.classList.remove('flex');
+        setMascotState('chill');
+      });
+
+      // Toggle Synthesizer Audio
+      btnSfxToggle.addEventListener('click', () => {
+        synth.enabled = !synth.enabled;
+        if (synth.enabled) {
+          sfxLed.className = 'w-2 h-2 rounded-full bg-[#00F5D4] shadow-[0_0_8px_#00F5D4]';
+          sfxText.textContent = 'SYNTH: ON';
+          synth.playClick(880);
+        } else {
+          synth.stopTypingLoop();
+          sfxLed.className = 'w-2 h-2 rounded-full bg-[#6E768A]';
+          sfxText.textContent = 'SYNTH: MUTED';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -55,8 +55,22 @@ export const PYPI_IMPORT_TO_DIST = new Map([
   ['googleapiclient', 'google-api-python-client']
 ]);
 
+const EXTRA_MAP = new Map();
+
+// Runtime extension for .slopdepsrc.json (private distributions, internal forks)
+export function extendImportMap(entries) {
+  if (!entries || typeof entries !== 'object') return;
+  for (const [importName, distName] of Object.entries(entries)) {
+    if (typeof importName === 'string' && typeof distName === 'string' && distName.trim()) {
+      EXTRA_MAP.set(importName.toLowerCase(), distName.trim());
+    }
+  }
+}
+
 export function resolvePyPiDistributionName(importName) {
   const lower = importName.toLowerCase();
+  const extra = EXTRA_MAP.get(lower);
+  if (extra) return extra;
   if (PYPI_IMPORT_TO_DIST.has(lower)) {
     return PYPI_IMPORT_TO_DIST.get(lower);
   }
@@ -88,6 +102,17 @@ export function resolvePyPiDistributionName(importName) {
     return lower.replace(/\./g, '-');
   }
   if (lower.startsWith('opentelemetry.')) {
+    // Core API submodules live in opentelemetry-api, SDK in opentelemetry-sdk.
+    // The dots-to-dashes fallback would invent names like 'opentelemetry-trace' that 404 on PyPI.
+    if (lower.startsWith('opentelemetry.sdk')) {
+      return 'opentelemetry-sdk';
+    }
+    if (/^opentelemetry\.(?:trace|metrics|propagators|context|baggage|attributes|util|environment)$/.test(lower)) {
+      return 'opentelemetry-api';
+    }
+    return lower.replace(/\./g, '-');
+  }
+  if (lower.startsWith('paho.')) {
     return lower.replace(/\./g, '-');
   }
 

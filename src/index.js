@@ -1,11 +1,17 @@
-import { promises as fs } from 'fs';
+import { promises as fs, existsSync } from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { extractJsImports } from './extractors/js-ts.js';
 import { extractPythonImports } from './extractors/python.js';
-import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy } from './extractors/manifests.js';
-import { isBuiltin } from './builtins.js';
+import { extractRustUses } from './extractors/rust.js';
+import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy, extractCargoToml } from './extractors/manifests.js';
+import { isBuiltin, extendBuiltins } from './builtins.js';
 import { checkNpmPackage } from './registries/npm.js';
 import { checkPyPiPackage } from './registries/pypi.js';
+import { checkRustPackage } from './registries/rust.js';
+import { cacheGet, cacheFlush } from './registries/cache.js';
+import { addPopularEntries, isPopularPackage } from './typosquat.js';
+import { extendImportMap } from './pypi-map.js';
 
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
@@ -48,9 +54,12 @@ async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir 
     try {
       if (entry.isDirectory()) {
         if (dirNames) {
-          dirNames.add(entry.name.toLowerCase());
           const rel = path.relative(rootDir, fullPath).replace(/\\/g, '/').toLowerCase();
           dirNames.add(rel);
+          // Only direct top-level subdirectories of rootDir can be root packages
+          if (path.dirname(fullPath) === rootDir) {
+            dirNames.add(entry.name.toLowerCase());
+          }
         }
         await getFilesRecursively(fullPath, fileList, dirNames, rootDir);
       } else if (entry.isFile()) {
@@ -101,7 +110,22 @@ async function loadPathAliases(targetDir) {
   return aliases;
 }
 
-export async function scanDirectory(targetDir = process.cwd()) {
+async function loadRcConfig(targetDir) {
+  try {
+    const raw = await fs.readFile(path.join(targetDir, '.slopdepsrc.json'), 'utf-8');
+    const rc = JSON.parse(raw);
+    if (rc.builtins?.npm) extendBuiltins('npm', rc.builtins.npm);
+    if (rc.builtins?.pypi) extendBuiltins('pypi', rc.builtins.pypi);
+    if (rc.popular?.npm) addPopularEntries('npm', rc.popular.npm);
+    if (rc.popular?.pypi) addPopularEntries('pypi', rc.popular.pypi);
+    if (rc.map) extendImportMap(rc.map);
+    return rc;
+  } catch {
+    return null;
+  }
+}
+
+export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   // Fail-closed: Ensure root directory actually exists!
   try {
     const stat = await fs.stat(targetDir);
@@ -118,6 +142,11 @@ export async function scanDirectory(targetDir = process.cwd()) {
     }
     throw err;
   }
+
+  // staged mode: only content-read files present in this set (forward-slash absolute paths)
+  const stagedFilter = options.stagedFiles || null;
+
+  await loadRcConfig(targetDir);
 
   const dirNames = new Set();
   const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir);
@@ -146,6 +175,7 @@ export async function scanDirectory(targetDir = process.cwd()) {
   for (const file of allFiles) {
     const ext = path.extname(file).toLowerCase();
     const basename = path.basename(file).toLowerCase();
+    const isStaged = !stagedFilter || stagedFilter.has(file.replace(/\\/g, '/'));
 
     // Manifests
     if (basename === 'package.json') {
@@ -157,13 +187,31 @@ export async function scanDirectory(targetDir = process.cwd()) {
             localWorkspacePackages.add(parsed.name.toLowerCase());
           }
         } catch {}
+        if (!isStaged) continue;
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractPackageJson(content, rel));
       } catch {}
       continue;
     }
 
-    if (basename.endsWith('.txt') && (basename.includes('requirements') || basename.includes('reqs'))) {
+    if (basename === 'cargo.toml') {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const nameMatch = content.match(/^\s*name\s*=\s*"([^"]+)"/m);
+        if (nameMatch) {
+          localWorkspacePackages.add(nameMatch[1].toLowerCase());
+          localWorkspacePackages.add(nameMatch[1].toLowerCase().replace(/-/g, '_'));
+        }
+        if (!isStaged) continue;
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractCargoToml(content, rel));
+      } catch {}
+      continue;
+    }
+
+    if (!isStaged) continue;
+
+    if (basename.endsWith('.txt') && (basename.includes('requirements') || basename.includes('reqs') || basename.includes('constraint'))) {
       try {
         const content = await fs.readFile(file, 'utf-8');
         const rel = path.relative(targetDir, file);
@@ -243,6 +291,15 @@ export async function scanDirectory(targetDir = process.cwd()) {
       } catch {}
       continue;
     }
+
+    if (ext === '.rs') {
+      try {
+        const content = await fs.readFile(file, 'utf-8');
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractRustUses(content, rel));
+      } catch {}
+      continue;
+    }
   }
 
   // Filter builtins/local modules and group by package key (ecosystem:name)
@@ -253,13 +310,20 @@ export async function scanDirectory(targetDir = process.cwd()) {
     // Python local tree check
     if (ref.ecosystem === 'pypi') {
       const lower = ref.name.toLowerCase();
-      if (localPyModules.has(lower) || dirNames.has(lower)) continue;
+      const isLocalInFileDir = ref.file ? (
+        existsSync(path.resolve(targetDir, path.dirname(ref.file), ref.name)) ||
+        existsSync(path.resolve(targetDir, path.dirname(ref.file), `${ref.name}.py`)) ||
+        existsSync(path.resolve(targetDir, path.dirname(ref.file), `${ref.name}.pyi`))
+      ) : false;
+      if (localPyModules.has(lower) || dirNames.has(lower) || isLocalInFileDir) continue;
     }
 
-    // JS/TS local path alias & local folder checks
-    if (ref.ecosystem === 'npm') {
+    // JS/TS + Rust local workspace & local folder checks
+    if (ref.ecosystem === 'npm' || ref.ecosystem === 'cargo') {
       const lowerName = ref.name.toLowerCase();
       if (localWorkspacePackages.has(lowerName)) continue;
+
+      if (ref.ecosystem === 'cargo' && dirNames.has(lowerName)) continue;
 
       let isAlias = false;
       for (const alias of pathAliases) {
@@ -270,12 +334,25 @@ export async function scanDirectory(targetDir = process.cwd()) {
       }
       if (isAlias) continue;
 
-      // Handle @folder alias convention when folder exists locally on disk
-      if (ref.name.startsWith('@')) {
-        const scopeFolder = ref.name.slice(1).split('/')[0].toLowerCase();
-        if (dirNames.has(scopeFolder) || dirNames.has(`src/${scopeFolder}`)) {
-          continue;
+      // Handle non-standard @folder/file alias convention ONLY if the target file actually exists on disk
+      if (ref.ecosystem === 'npm' && ref.name.startsWith('@') && !ref.name.includes('..')) {
+        const subPath = ref.name.slice(1);
+        const candidatePaths = [
+          path.resolve(targetDir, subPath),
+          path.resolve(targetDir, 'src', subPath)
+        ];
+        const exts = ['', '.ts', '.tsx', '.js', '.jsx', '.vue', '.svelte', '.astro', '/index.ts', '/index.js', '/index.tsx'];
+        let fileExistsOnDisk = false;
+        for (const cand of candidatePaths) {
+          for (const ext of exts) {
+            if (existsSync(cand + ext)) {
+              fileExistsOnDisk = true;
+              break;
+            }
+          }
+          if (fileExistsOnDisk) break;
         }
+        if (fileExistsOnDisk) continue;
       }
     }
 
@@ -287,19 +364,49 @@ export async function scanDirectory(targetDir = process.cwd()) {
 
   const targets = Array.from(uniqueTargets.values());
 
-  // Concurrently verify with a worker pool of 8 to avoid HTTP 429 rate limiting
-  const findings = await mapConcurrent(targets, 8, async (target) => {
-    let check;
-    if (target.ecosystem === 'npm') {
-      check = await checkNpmPackage(target.name);
-    } else {
-      check = await checkPyPiPackage(target.name);
-    }
-    return {
-      ...target,
-      ...check
-    };
-  });
+  // Offline / privacy mode: bundled corpus answers popular packages with zero
+  // network, the persistent cache replays past verdicts, everything else is an
+  // honest UNKNOWN — never a faked CRITICAL or CLEAN.
+  const findings = options.offline
+    ? await mapConcurrent(targets, 8, async (target) => {
+        if (isPopularPackage(target.name, target.ecosystem)) {
+          return {
+            ...target,
+            status: 'VERIFIED',
+            risk: 'CLEAN',
+            exists: true,
+            verifiedVia: 'corpus',
+            message: 'Verified offline via the bundled popularity corpus (no network call).'
+          };
+        }
+        const cached = await cacheGet(`${target.ecosystem}:${target.name.toLowerCase()}`);
+        if (cached) return { ...target, ...cached, cached: true };
+        return {
+          ...target,
+          status: 'UNKNOWN',
+          risk: 'WARN',
+          exists: null,
+          message: 'Offline mode: no cached verdict for this package. Run an online scan to verify.'
+        };
+      })
+    : await mapConcurrent(targets, 8, async (target) => {
+        let check;
+        if (target.ecosystem === 'npm') {
+          check = await checkNpmPackage(target.name);
+        } else if (target.ecosystem === 'cargo') {
+          check = await checkRustPackage(target.name);
+        } else {
+          check = await checkPyPiPackage(target.name);
+        }
+        return {
+          ...target,
+          ...check
+        };
+      });
+
+  if (!options.offline) {
+    await cacheFlush();
+  }
 
   return {
     findings,
@@ -311,4 +418,38 @@ export async function scanDirectory(targetDir = process.cwd()) {
       clean: findings.filter(f => f.risk === 'CLEAN').length
     }
   };
+}
+
+function git(dir, args) {
+  const res = spawnSync('git', args, { cwd: dir, encoding: 'utf-8', windowsHide: true });
+  if (res.error || res.status !== 0) {
+    const err = new Error(
+      `--staged requires a git repository with staged files (git add). ${res.error ? res.error.message : (res.stderr || '').trim()}`
+    );
+    err.code = 'EGIT';
+    throw err;
+  }
+  return res.stdout;
+}
+
+export async function scanStagedFiles(targetDir = process.cwd(), options = {}) {
+  const topLevel = git(targetDir, ['rev-parse', '--show-toplevel']).trim();
+  const listed = git(targetDir, ['diff', '--cached', '--name-only', '--diff-filter=ACMR'])
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  const stagedFiles = new Set();
+  for (const rel of listed) {
+    const abs = path.resolve(topLevel, rel).replace(/\\/g, '/');
+    if (abs === path.resolve(targetDir).replace(/\\/g, '/')) continue;
+    if (abs.startsWith(path.resolve(targetDir).replace(/\\/g, '/') + '/')) {
+      stagedFiles.add(abs);
+    }
+  }
+
+  const result = await scanDirectory(targetDir, { ...options, stagedFiles });
+  result.staged = true;
+  result.stagedFileCount = stagedFiles.size;
+  return result;
 }

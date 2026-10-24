@@ -1,14 +1,37 @@
 import { resolvePyPiDistributionName } from '../pypi-map.js';
+import { findTyposquatCandidate, typosquatSuggestion } from '../typosquat.js';
+import { cacheGet, cacheSet } from './cache.js';
 
 const CACHE = new Map();
 const IN_FLIGHT = new Map();
 
 export async function checkPyPiPackage(pkgName) {
   const distName = resolvePyPiDistributionName(pkgName);
-  const cacheKey = distName.toLowerCase();
+  const cacheKey = distName?.toLowerCase();
 
   if (CACHE.has(cacheKey)) return CACHE.get(cacheKey);
   if (IN_FLIGHT.has(cacheKey)) return IN_FLIGHT.get(cacheKey);
+
+  const clean = distName?.trim();
+  if (!clean || clean.includes('..') || clean === '.' || !/^[a-zA-Z0-9_.-]+$/i.test(clean)) {
+    const invalidResult = {
+      name: pkgName,
+      resolvedDist: distName,
+      ecosystem: 'pypi',
+      status: 'INVALID',
+      risk: 'WARN',
+      exists: false,
+      message: 'Invalid package specifier format.'
+    };
+    CACHE.set(cacheKey || pkgName, invalidResult);
+    return invalidResult;
+  }
+
+  const persisted = await cacheGet(`pypi:${cacheKey}`);
+  if (persisted) {
+    CACHE.set(cacheKey, persisted);
+    return persisted;
+  }
 
   const promise = (async () => {
     const url = `https://pypi.org/pypi/${encodeURIComponent(distName)}/json`;
@@ -20,6 +43,7 @@ export async function checkPyPiPackage(pkgName) {
       const res = await fetch(url, { signal: controller.signal });
 
       if (res.status === 404) {
+        const suggestion = typosquatSuggestion(distName.toLowerCase(), 'pypi');
         return {
           name: pkgName,
           resolvedDist: distName,
@@ -27,9 +51,10 @@ export async function checkPyPiPackage(pkgName) {
           status: 'HALLUCINATED',
           risk: 'CRITICAL',
           exists: false,
-          message: distName !== pkgName
+          message: (distName !== pkgName
             ? `Import '${pkgName}' maps to distribution '${distName}', which DOES NOT EXIST on PyPI. Potential AI hallucination trap!`
-            : `Package '${distName}' DOES NOT EXIST on PyPI. Potential AI hallucination trap!`
+            : `Package '${distName}' DOES NOT EXIST on PyPI. Potential AI hallucination trap!`)
+            + (suggestion ? ` Did you mean '${suggestion}'?` : '')
         };
       }
 
@@ -68,7 +93,18 @@ export async function checkPyPiPackage(pkgName) {
       let risk = 'CLEAN';
       let message = 'Legitimate published PyPI package.';
 
-      if (versions.length === 0) {
+      const squat = findTyposquatCandidate(distName.toLowerCase(), 'pypi', ageDays);
+      if (squat && squat.severity === 'suspect') {
+        status = 'SUSPICIOUS';
+        risk = 'HIGH';
+        message = `Typosquat / supply-chain risk: ${
+          squat.distance === 0
+            ? `name uses lookalike characters of '${squat.canonical}'`
+            : `name is ${squat.distance} edit${squat.distance > 1 ? 's' : ''} from '${squat.canonical}'`
+        }. Inspect before installing.`;
+      } else if (squat && squat.severity === 'suggestion') {
+        message = `Legitimate package, but the name closely resembles '${squat.canonical}' — verify this dependency was intentional.`;
+      } else if (versions.length === 0) {
         status = 'SUSPICIOUS';
         risk = 'HIGH';
         message = 'Package exists on PyPI registry, but has 0 published releases.';
@@ -111,6 +147,7 @@ export async function checkPyPiPackage(pkgName) {
     const result = await promise;
     if (result.status !== 'NETWORK_ERROR' && result.status !== 'UNKNOWN') {
       CACHE.set(cacheKey, result);
+      cacheSet(`pypi:${cacheKey}`, result);
     }
     return result;
   } finally {

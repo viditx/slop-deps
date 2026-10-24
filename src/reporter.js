@@ -25,7 +25,7 @@ ${c.cyan}${c.bold}   ███████╗██╗      ██████�
    ╚════██║██║     ██║   ██║██╔═══╝ ╚════╝██║  ██║██╔══╝  ██╔═══╝ ╚════██║
    ███████║███████╗╚██████╔╝██║           ██████╔╝███████╗██║     ███████║
    ╚══════╝╚══════╝ ╚═════╝ ╚═╝           ╚═════╝ ╚══════╝╚═╝     ╚══════╝${c.reset}
-   ${c.dim}AI Dependency Hallucination & Supply-Chain Sentinel • v1.0.0${c.reset}
+   ${c.dim}AI Dependency Hallucination & Supply-Chain Sentinel • v1.4.0${c.reset}
 `);
 }
 

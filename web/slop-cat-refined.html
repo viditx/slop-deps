@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>slop-deps // AI Dependency Hallucination Sentinel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-oled: #08090C;
+      --bg-card: #0E1016;
+      --bg-panel: #13161F;
+      --border-dim: rgba(245, 244, 240, 0.08);
+      --border-bright: rgba(245, 244, 240, 0.22);
+      --cream: #F5F4F0;
+      --cream-shadow: #DFDDD4;
+      --cream-deep: #C5C2B6;
+      --ginger: #FF5A26;
+      --ginger-glow: rgba(255, 90, 38, 0.35);
+      --lavender: #9D8DF1;
+      --obsidian: #181A24;
+      --obsidian-light: #25293A;
+      --cyan: #00F5D4;
+      --emerald: #10B981;
+      --crimson: #FF3366;
+      --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+      --snappy: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-oled);
+      color: var(--cream);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1.25rem;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 50% 25%, rgba(0, 245, 212, 0.05) 0%, transparent 60%),
+        radial-gradient(circle at 80% 80%, rgba(255, 90, 38, 0.03) 0%, transparent 50%),
+        linear-gradient(rgba(245, 244, 240, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245, 244, 240, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+    }
+
+    /* Hardware Chassis Container */
+    .stage-chassis {
+      width: 100%;
+      max-width: 620px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 28px;
+      box-shadow: 
+        0 30px 80px -20px rgba(0, 0, 0, 0.85),
+        0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+        0 2px 0 0 rgba(255, 255, 255, 0.08) inset;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.35s var(--snappy), transform 0.35s var(--spring), box-shadow 0.35s var(--snappy);
+    }
+
+    .stage-chassis:hover {
+      border-color: var(--border-bright);
+    }
+
+    .stage-chassis.drag-active {
+      border-color: var(--cyan);
+      box-shadow: 0 0 45px rgba(0, 245, 212, 0.25), 0 0 0 1px var(--cyan) inset;
+      transform: scale(1.012);
+    }
+
+    /* Screen shake impact on claw slash */
+    @keyframes chassisImpact {
+      0% { transform: translate(0, 0); }
+      15% { transform: translate(-12px, 10px) rotate(-1.2deg); }
+      30% { transform: translate(10px, -12px) rotate(1.4deg); }
+      45% { transform: translate(-8px, 6px); }
+      60% { transform: translate(6px, -4px); }
+      100% { transform: translate(0, 0); }
+    }
+    .stage-chassis.shake {
+      animation: chassisImpact 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    /* Telemetry Header */
+    .telemetry-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.1rem 1.6rem;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    .telemetry-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .status-led {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 10px var(--cyan);
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .stage-chassis[data-state="drag"] .status-led {
+      background: var(--ginger);
+      box-shadow: 0 0 12px var(--ginger);
+    }
+    .stage-chassis[data-state="hack"] .status-led {
+      background: #FF2A6D;
+      box-shadow: 0 0 14px #FF2A6D;
+    }
+    .stage-chassis[data-state="chill"] .status-led {
+      background: var(--emerald);
+      box-shadow: 0 0 10px var(--emerald);
+    }
+
+    .audio-toggle {
+      background: #181B26;
+      border: 1px solid #282D3F;
+      color: var(--cream);
+      padding: 0.4rem 0.85rem;
+      border-radius: 9px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+    .audio-toggle:hover {
+      border-color: var(--cyan);
+      background: #1E2333;
+    }
+
+    /* Mascot Viewport */
+    .mascot-viewport {
+      position: relative;
+      width: 100%;
+      height: 380px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 60%, rgba(24, 26, 36, 0.4) 0%, transparent 75%);
+    }
+
+    /* Crosshairs */
+    .crosshair {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-color: rgba(245, 244, 240, 0.14);
+      pointer-events: none;
+    }
+    .ch-tl { top: 16px; left: 16px; border-top: 1.5px solid; border-left: 1.5px solid; }
+    .ch-tr { top: 16px; right: 16px; border-top: 1.5px solid; border-right: 1.5px solid; }
+    .ch-bl { bottom: 16px; left: 16px; border-bottom: 1.5px solid; border-left: 1.5px solid; }
+    .ch-br { bottom: 16px; right: 16px; border-bottom: 1.5px solid; border-right: 1.5px solid; }
+
+    /* SVG Mascot Choreography */
+    #cat-svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #cat-head, #ear-left, #ear-right, #cat-tail, #paw-left, #paw-right,
+    #prop-keyboard, #prop-coffee, #prop-envelope {
+      transition: all 0.45s var(--spring);
+      transform-box: fill-box;
+    }
+
+    /* 1. Tail Spring Oscillator */
+    @keyframes tailWag {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(14deg); }
+    }
+    #cat-tail {
+      transform-origin: 326px 266px;
+      animation: tailWag 3.6s ease-in-out infinite;
+    }
+
+    /* 2. Natural Breathing */
+    @keyframes catBreathe {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    #cat-head {
+      transform-origin: center bottom;
+      animation: catBreathe 4s ease-in-out infinite;
+    }
+
+    /* DRAG HOVER STATE: Alert ears + dilated anticipation */
+    .stage-chassis[data-state="drag"] #ear-left {
+      transform: rotate(-12deg) scale(1.08) translateY(-4px);
+    }
+    .stage-chassis[data-state="drag"] #ear-right {
+      transform: rotate(12deg) scale(1.08) translateY(-4px);
+    }
+    .stage-chassis[data-state="drag"] #cat-head {
+      transform: translateY(-8px) scale(1.02);
+    }
+    .stage-chassis[data-state="drag"] #paw-left {
+      transform: translate(-10px, 14px) scale(1.1);
+    }
+    .stage-chassis[data-state="drag"] #paw-right {
+      transform: translate(10px, 14px) scale(1.1);
+    }
+    .stage-chassis[data-state="drag"] .paw-claws {
+      opacity: 1;
+      transform: translateY(3px);
+    }
+    .paw-claws {
+      opacity: 0;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+
+    /* 3. HACKING RAPID DRUMMING (PHATAK PHATAK) */
+    @keyframes pawDrumLeft {
+      0%, 100% { transform: translateY(0) rotate(-4deg); }
+      50% { transform: translateY(-20px) rotate(8deg); }
+    }
+    @keyframes pawDrumRight {
+      0%, 100% { transform: translateY(-20px) rotate(-8deg); }
+      50% { transform: translateY(2px) rotate(4deg); }
+    }
+    @keyframes headHackJitter {
+      0%, 100% { transform: translateY(4px) rotate(-1deg); }
+      50% { transform: translateY(7px) rotate(1deg); }
+    }
+
+    .stage-chassis[data-state="hack"] #cat-head {
+      animation: headHackJitter 0.18s infinite;
+    }
+    .stage-chassis[data-state="hack"] #paw-left {
+      animation: pawDrumLeft 0.1s infinite;
+    }
+    .stage-chassis[data-state="hack"] #paw-right {
+      animation: pawDrumRight 0.1s infinite;
+    }
+    .stage-chassis[data-state="hack"] #prop-keyboard {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* REPORT STATE: Right paw slides the envelope forward */
+    .stage-chassis[data-state="report"] #paw-left {
+      transform: translate(-14px, 4px);
+    }
+    .stage-chassis[data-state="report"] #paw-right {
+      transform: translate(18px, 18px);
+    }
+
+    /* CHILL STATE: Hide resting paws, show coffee mug */
+    .stage-chassis[data-state="chill"] #paw-left,
+    .stage-chassis[data-state="chill"] #paw-right {
+      opacity: 0;
+      transform: translateY(16px);
+      pointer-events: none;
+    }
+    .stage-chassis[data-state="chill"] #prop-coffee {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* Props Default Hidden */
+    #prop-keyboard, #prop-coffee, #prop-envelope {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(24px);
+    }
+
+    .stage-chassis[data-state="report"] #prop-envelope {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .stage-chassis[data-state="report"] #prop-envelope:hover {
+      transform: translateY(-4px) scale(1.03);
+    }
+
+    /* Coffee Steam Animation */
+    @keyframes steamDrift {
+      0% { transform: translateY(0); opacity: 0; }
+      50% { opacity: 0.75; }
+      100% { transform: translateY(-22px) translateX(4px); opacity: 0; }
+    }
+    .steam-wisp {
+      animation: steamDrift 2.4s ease-out infinite;
+    }
+    .sw-2 { animation-delay: 0.8s; }
+    .sw-3 { animation-delay: 1.6s; }
+
+    /* Eyelids & Blinking */
+    .eyelid-top {
+      transition: transform 0.14s var(--snappy);
+      transform: translateY(-26px);
+    }
+    .eyelid-bottom {
+      transition: transform 0.14s var(--snappy);
+      transform: translateY(26px);
+    }
+    .blink-now .eyelid-top { transform: translateY(0px) !important; }
+    .blink-now .eyelid-bottom { transform: translateY(0px) !important; }
+    .stage-chassis[data-state="chill"] .eyelid-top { transform: translateY(-12px); }
+
+    /* Claw Slash Layer */
+    #claw-slash-layer {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .slash-line {
+      stroke-dasharray: 600;
+      stroke-dashoffset: 600;
+    }
+    @keyframes slashDraw {
+      0% { stroke-dashoffset: 600; opacity: 1; stroke-width: 14px; }
+      50% { stroke-dashoffset: 0; opacity: 1; stroke-width: 16px; }
+      100% { stroke-dashoffset: -600; opacity: 0; stroke-width: 2px; }
+    }
+    #claw-slash-layer.active {
+      opacity: 1;
+    }
+    #claw-slash-layer.active .sl-1 { animation: slashDraw 0.28s var(--snappy) forwards; }
+    #claw-slash-layer.active .sl-2 { animation: slashDraw 0.28s var(--snappy) 0.03s forwards; }
+    #claw-slash-layer.active .sl-3 { animation: slashDraw 0.28s var(--snappy) 0.06s forwards; }
+    #claw-slash-layer.active .slash-flash {
+      animation: slashFlash 0.25s forwards;
+    }
+    @keyframes slashFlash {
+      0% { opacity: 0.28; }
+      100% { opacity: 0; }
+    }
+
+    /* Editorial Speech Bubble */
+    .speech-region {
+      padding: 0 1.6rem 1.6rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .speech-pill {
+      background: var(--cream);
+      color: #08090C;
+      padding: 0.9rem 1.6rem;
+      border-radius: 9999px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      transition: transform 0.3s var(--spring);
+    }
+    .speech-pill::before {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+      width: 14px;
+      height: 14px;
+      background: var(--cream);
+    }
+    .speech-pill.pop {
+      transform: scale(0.96) translateY(3px);
+    }
+    .speech-text {
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: -0.01em;
+    }
+
+    .speech-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: rgba(245, 244, 240, 0.45);
+      letter-spacing: 0.05em;
+      text-align: center;
+    }
+
+    /* Hardware Controls Deck */
+    .control-deck {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.5rem;
+      padding: 1rem 1.6rem;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-dim);
+    }
+
+    .deck-btn {
+      background: #181B26;
+      border: 1px solid #282D3F;
+      color: var(--cream);
+      padding: 0.65rem 0.4rem;
+      border-radius: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s;
+    }
+    .deck-btn:hover {
+      background: #202433;
+      border-color: var(--border-bright);
+      transform: translateY(-1px);
+    }
+    .deck-btn.active {
+      border-color: var(--cyan);
+      background: #15222A;
+      color: var(--cyan);
+      box-shadow: 0 0 14px rgba(0, 245, 212, 0.15);
+    }
+
+    .deck-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #3B4259;
+    }
+    .deck-btn.active .deck-dot {
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan);
+    }
+
+    /* Privacy Banner / Trust Pill */
+    .trust-banner {
+      margin-top: 1.5rem;
+      max-width: 620px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 0.4rem;
+    }
+    .trust-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 1rem;
+      border-radius: 9999px;
+      background: rgba(24, 26, 36, 0.6);
+      border: 1px solid var(--border-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--cream);
+    }
+    .trust-pill strong { color: var(--emerald); }
+    .trust-sub {
+      font-size: 0.75rem;
+      color: rgba(245, 244, 240, 0.4);
+    }
+
+    /* Interactive Report Telemetry Modal */
+    .report-overlay {
+      position: absolute;
+      inset: 12px;
+      background: rgba(14, 16, 22, 0.94);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--cyan);
+      border-radius: 20px;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1.5rem;
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.96);
+      transition: all 0.25s var(--snappy);
+    }
+    .report-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1);
+    }
+
+    .ro-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-dim);
+      padding-bottom: 0.8rem;
+    }
+    .ro-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--cyan);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .ro-close {
+      background: transparent;
+      border: none;
+      color: var(--cream);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      cursor: pointer;
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      background: #1C202C;
+    }
+    .ro-close:hover { background: var(--crimson); }
+
+    .ro-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+      margin: 1rem 0;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .ro-card {
+      background: #090B10;
+      border: 1px solid var(--border-dim);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+    }
+    .ro-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+    }
+    .ro-stat-box {
+      background: #090B10;
+      border: 1px solid var(--border-dim);
+      border-radius: 10px;
+      padding: 0.6rem;
+      text-align: center;
+    }
+    .ro-stat-num {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--emerald);
+    }
+    .ro-stat-label {
+      font-size: 0.62rem;
+      color: rgba(245, 244, 240, 0.45);
+      margin-top: 0.2rem;
+    }
+
+    .ro-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.75rem;
+    }
+    .ro-btn {
+      background: var(--cyan);
+      color: #08090C;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.75rem;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ro-btn:hover {
+      background: #72FCEF;
+      transform: translateY(-1px);
+    }
+
+    /* Footer Signature */
+    .footer-sig {
+      margin-top: 2rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: rgba(245, 244, 240, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .footer-sig a {
+      color: var(--cream);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .footer-sig a:hover {
+      color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Main Hardware Stage Chassis -->
+  <main class="stage-chassis" id="chassis" data-state="idle">
+    
+    <!-- Telemetry Bar -->
+    <header class="telemetry-bar">
+      <div class="telemetry-left">
+        <span class="status-led" id="status-led"></span>
+        <span id="telemetry-mode" style="color: var(--cyan);">[STATE: IDLE_SENTINEL]</span>
+      </div>
+      <button class="audio-toggle" id="audio-btn" title="Toggle Procedural Synthesizer">
+        <span id="audio-icon">🔊</span>
+        <span id="audio-label">SFX: ON</span>
+      </button>
+    </header>
+
+    <!-- Mascot Stage Viewport -->
+    <div class="mascot-viewport" id="dropzone" title="Click or drag files here">
+      <div class="crosshair ch-tl"></div>
+      <div class="crosshair ch-tr"></div>
+      <div class="crosshair ch-bl"></div>
+      <div class="crosshair ch-br"></div>
+
+      <!-- PURE SVG MASCOT -->
+      <svg id="cat-svg" viewBox="0 0 500 350" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="creamBodyGrad" x1="250" y1="80" x2="250" y2="310" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#FAF9F5" />
+            <stop offset="65%" stop-color="#F0EEE6" />
+            <stop offset="100%" stop-color="#DBD7C9" />
+          </linearGradient>
+
+          <linearGradient id="gingerPatchGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#FF6B3D" />
+            <stop offset="100%" stop-color="#E04312" />
+          </linearGradient>
+
+          <linearGradient id="obsidianGrad" x1="250" y1="120" x2="250" y2="210" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#222536" />
+            <stop offset="100%" stop-color="#10121A" />
+          </linearGradient>
+
+          <linearGradient id="pupilEmeraldGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00F5D4" />
+            <stop offset="100%" stop-color="#059669" />
+          </linearGradient>
+
+          <linearGradient id="lavenderCollar" x1="190" y1="210" x2="310" y2="225" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#B5A8FF" />
+            <stop offset="50%" stop-color="#9D8DF1" />
+            <stop offset="100%" stop-color="#7665D6" />
+          </linearGradient>
+
+          <radialGradient id="floorShadow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#000000" stop-opacity="0.75" />
+            <stop offset="70%" stop-color="#000000" stop-opacity="0.25" />
+            <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+          </radialGradient>
+
+          <filter id="cyanGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+
+          <filter id="slashGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+
+          <filter id="softDrop" x="-15%" y="-15%" width="130%" height="135%">
+            <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#040507" flood-opacity="0.55" />
+          </filter>
+
+          <clipPath id="leftEyeClip">
+            <circle cx="212" cy="166" r="23" />
+          </clipPath>
+          <clipPath id="rightEyeClip">
+            <circle cx="288" cy="166" r="23" />
+          </clipPath>
+        </defs>
+
+        <!-- Ambient Floor Shadow -->
+        <ellipse cx="250" cy="300" rx="135" ry="22" fill="url(#floorShadow)" />
+
+        <!-- 1. RHYTHMIC SPRING TAIL -->
+        <g id="cat-tail" filter="url(#softDrop)">
+          <path d="M 326 266 C 378 272, 412 232, 405 184 C 400 148, 370 142, 366 168 C 362 192, 384 218, 345 244"
+                stroke="url(#creamBodyGrad)" stroke-width="26" stroke-linecap="round" fill="none" />
+          <path d="M 404 192 C 401 154, 370 144, 366 168"
+                stroke="url(#gingerPatchGrad)" stroke-width="26" stroke-linecap="round" fill="none" />
+          <path d="M 398 212 C 402 204, 404 196, 404 190"
+                stroke="#9D8DF1" stroke-width="26" stroke-linecap="butt" fill="none" />
+        </g>
+
+        <!-- 2. SITTING BODY -->
+        <g id="cat-torso" filter="url(#softDrop)">
+          <path d="M 186 198 C 166 238, 160 288, 190 296 L 310 296 C 340 288, 334 238, 314 198 Z"
+                fill="url(#creamBodyGrad)" />
+          <path d="M 314 198 C 330 228, 335 265, 320 288 C 302 276, 296 244, 302 205 Z"
+                fill="url(#gingerPatchGrad)" opacity="0.92" />
+          <path d="M 225 228 Q 250 242 275 228" stroke="#DFDDD4" stroke-width="3" stroke-linecap="round" fill="none" />
+          
+          <!-- Collar & Hardware Tag -->
+          <path d="M 184 205 Q 250 226 316 205" stroke="url(#lavenderCollar)" stroke-width="10" stroke-linecap="round" fill="none" />
+          <g transform="translate(250, 222)">
+            <circle cx="0" cy="0" r="9" fill="#181A24" stroke="#9D8DF1" stroke-width="2" />
+            <circle cx="0" cy="0" r="3.5" fill="#00F5D4" filter="url(#cyanGlow)" />
+          </g>
+        </g>
+
+        <!-- 3. HEAD, EARS & GAZE-TRACKING EYES -->
+        <g id="cat-head" filter="url(#softDrop)">
+          <!-- Left Ear -->
+          <g id="ear-left">
+            <path d="M 166 142 L 142 56 C 140 48, 150 42, 158 48 L 218 94 Z"
+                  fill="url(#obsidianGrad)" stroke="#2B3045" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M 170 130 L 152 68 C 150 62, 156 58, 162 62 L 204 98 Z"
+                  fill="url(#gingerPatchGrad)" opacity="0.95" />
+            <!-- Cyber Piercing -->
+            <rect x="142" y="74" width="9" height="4" rx="2" fill="#00F5D4" filter="url(#cyanGlow)" />
+          </g>
+
+          <!-- Right Ear -->
+          <g id="ear-right">
+            <path d="M 334 142 L 358 56 C 360 48, 350 42, 342 48 L 282 94 Z"
+                  fill="url(#obsidianGrad)" stroke="#2B3045" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M 330 130 L 348 68 C 350 62, 344 58, 338 62 L 296 98 Z"
+                  fill="url(#gingerPatchGrad)" opacity="0.95" />
+          </g>
+
+          <!-- Head Squircle -->
+          <rect x="156" y="86" width="188" height="136" rx="68" fill="url(#creamBodyGrad)" />
+          <path d="M 250 86 C 298 86, 340 108, 344 154 C 324 168, 286 168, 268 144 C 254 126, 256 102, 250 86 Z"
+                fill="url(#gingerPatchGrad)" />
+
+          <!-- Lavender Obsidian Forehead Crest -->
+          <path d="M 246 92 H 254 V 116 H 246 Z M 230 96 L 236 94 L 241 112 L 235 114 Z M 270 96 L 264 94 L 259 112 L 265 114 Z"
+                fill="#181A24" />
+
+          <!-- Whiskers -->
+          <g stroke="#9D8DF1" stroke-width="2.5" stroke-linecap="round" opacity="0.85">
+            <line x1="160" y1="172" x2="124" y2="164" />
+            <line x1="158" y1="184" x2="118" y2="184" />
+            <line x1="162" y1="196" x2="128" y2="204" />
+            <line x1="340" y1="172" x2="376" y2="164" />
+            <line x1="342" y1="184" x2="382" y2="184" />
+            <line x1="338" y1="196" x2="372" y2="204" />
+          </g>
+
+          <!-- LEFT EYE -->
+          <g transform="translate(0, 0)">
+            <circle cx="212" cy="166" r="25" fill="#0C0E14" stroke="#25293A" stroke-width="2" />
+            <g clip-path="url(#leftEyeClip)">
+              <circle cx="212" cy="166" r="23" fill="url(#obsidianGrad)" />
+              <g id="pupil-left">
+                <circle cx="212" cy="166" r="14" fill="url(#pupilEmeraldGrad)" filter="url(#cyanGlow)" />
+                <circle cx="212" cy="166" r="7.5" fill="#08090C" />
+                <circle cx="206" cy="159" r="4" fill="#FFFFFF" />
+                <circle cx="218" cy="172" r="1.8" fill="#00F5D4" />
+              </g>
+              <rect class="eyelid-top" x="180" y="130" width="64" height="36" fill="#181A24" stroke="#FF5A26" stroke-width="2" />
+              <rect class="eyelid-bottom" x="180" y="166" width="64" height="36" fill="#181A24" />
+            </g>
+          </g>
+
+          <!-- RIGHT EYE -->
+          <g transform="translate(0, 0)">
+            <circle cx="288" cy="166" r="25" fill="#0C0E14" stroke="#25293A" stroke-width="2" />
+            <g clip-path="url(#rightEyeClip)">
+              <circle cx="288" cy="166" r="23" fill="url(#obsidianGrad)" />
+              <g id="pupil-right">
+                <circle cx="288" cy="166" r="14" fill="url(#pupilEmeraldGrad)" filter="url(#cyanGlow)" />
+                <circle cx="288" cy="166" r="7.5" fill="#08090C" />
+                <circle cx="282" cy="159" r="4" fill="#FFFFFF" />
+                <circle cx="294" cy="172" r="1.8" fill="#00F5D4" />
+              </g>
+              <rect class="eyelid-top" x="256" y="130" width="64" height="36" fill="#181A24" stroke="#FF5A26" stroke-width="2" />
+              <rect class="eyelid-bottom" x="256" y="166" width="64" height="36" fill="#181A24" />
+            </g>
+          </g>
+
+          <!-- Nose & Mouth -->
+          <polygon points="244,180 256,180 250,187" fill="#FF5A26" />
+          <path d="M 238 191 Q 244 198 250 191 Q 256 198 262 191" stroke="#181A24" stroke-width="3" stroke-linecap="round" fill="none" />
+        </g>
+
+        <!-- 4. INTERACTIVE PROPS -->
+        <!-- Mechanical Keyboard (Hacking State) -->
+        <g id="prop-keyboard" filter="url(#softDrop)">
+          <rect x="155" y="272" width="190" height="38" rx="8" fill="#181A24" stroke="#2B3045" stroke-width="2" />
+          <g fill="#00F5D4" opacity="0.9">
+            <rect x="165" y="278" width="14" height="9" rx="2.5" />
+            <rect x="183" y="278" width="14" height="9" rx="2.5" fill="#FAF9F5" />
+            <rect x="201" y="278" width="14" height="9" rx="2.5" fill="#FF5A26" />
+            <rect x="219" y="278" width="14" height="9" rx="2.5" />
+            <rect x="237" y="278" width="14" height="9" rx="2.5" fill="#FAF9F5" />
+            <rect x="255" y="278" width="14" height="9" rx="2.5" />
+            <rect x="273" y="278" width="14" height="9" rx="2.5" fill="#9D8DF1" />
+            <rect x="291" y="278" width="14" height="9" rx="2.5" fill="#FAF9F5" />
+            <rect x="309" y="278" width="22" height="9" rx="2.5" fill="#FF5A26" />
+            <rect x="168" y="291" width="22" height="9" rx="2.5" fill="#25293A" />
+            <rect x="194" y="291" width="102" height="9" rx="2.5" fill="#FF5A26" />
+            <rect x="300" y="291" width="31" height="9" rx="2.5" />
+          </g>
+        </g>
+
+        <!-- Steaming Coffee Mug (Chill State) -->
+        <g id="prop-coffee" filter="url(#softDrop)">
+          <path class="steam-wisp sw-1" d="M 238 228 C 234 216, 244 208, 238 196" stroke="#FAF9F5" stroke-width="2.5" stroke-linecap="round" fill="none" />
+          <path class="steam-wisp sw-2" d="M 252 224 C 258 212, 246 202, 252 190" stroke="#00F5D4" stroke-width="2.5" stroke-linecap="round" fill="none" />
+          <path class="steam-wisp sw-3" d="M 264 228 C 260 216, 270 208, 264 196" stroke="#9D8DF1" stroke-width="2.5" stroke-linecap="round" fill="none" />
+          
+          <path d="M 278 246 H 292 C 299 246, 299 274, 292 274 H 278" stroke="#FF5A26" stroke-width="7" stroke-linecap="round" fill="none" />
+          <rect x="220" y="236" width="60" height="50" rx="12" fill="#181A24" stroke="#F5F4F0" stroke-width="2.5" />
+          <ellipse cx="250" cy="238" rx="26" ry="5" fill="#6F4E37" />
+          <rect x="238" y="254" width="24" height="12" rx="3" fill="#FF5A26" />
+          <circle cx="250" cy="260" r="3" fill="#F5F4F0" />
+
+          <!-- Paws hugging mug -->
+          <ellipse cx="218" cy="262" rx="18" ry="13" transform="rotate(14 218 262)" fill="url(#creamBodyGrad)" stroke="#181A24" stroke-width="2" />
+          <ellipse cx="282" cy="262" rx="18" ry="13" transform="rotate(-14 282 262)" fill="url(#creamBodyGrad)" stroke="#181A24" stroke-width="2" />
+        </g>
+
+        <!-- FOREGROUND PAWS -->
+        <g id="paw-left" filter="url(#softDrop)">
+          <g class="paw-claws" fill="#00F5D4">
+            <path d="M 188 292 L 185 301 L 192 294 Z" />
+            <path d="M 200 295 L 200 305 L 205 295 Z" />
+            <path d="M 212 292 L 215 301 L 208 294 Z" />
+          </g>
+          <rect x="180" y="264" width="42" height="32" rx="16" fill="url(#creamBodyGrad)" stroke="#DFDDD4" stroke-width="1.5" />
+          <line x1="194" y1="283" x2="194" y2="293" stroke="#C5C2B6" stroke-width="2.2" stroke-linecap="round" />
+          <line x1="208" y1="283" x2="208" y2="293" stroke="#C5C2B6" stroke-width="2.2" stroke-linecap="round" />
+        </g>
+
+        <g id="paw-right" filter="url(#softDrop)">
+          <g class="paw-claws" fill="#00F5D4">
+            <path d="M 288 292 L 285 301 L 292 294 Z" />
+            <path d="M 300 295 L 300 305 L 305 295 Z" />
+            <path d="M 312 292 L 315 301 L 308 294 Z" />
+          </g>
+          <rect x="278" y="264" width="42" height="32" rx="16" fill="url(#creamBodyGrad)" stroke="#DFDDD4" stroke-width="1.5" />
+          <path d="M 298 264 H 306 C 314 264, 320 270, 320 278 V 282 C 308 282, 300 274, 298 264 Z" fill="url(#gingerPatchGrad)" />
+          <line x1="292" y1="283" x2="292" y2="293" stroke="#C5C2B6" stroke-width="2.2" stroke-linecap="round" />
+          <line x1="306" y1="283" x2="306" y2="293" stroke="#C5C2B6" stroke-width="2.2" stroke-linecap="round" />
+        </g>
+
+        <!-- Report Envelope Prop (Slides forward in State 4) -->
+        <g id="prop-envelope" filter="url(#softDrop)">
+          <rect x="196" y="268" width="108" height="66" rx="8" fill="#FAF9F5" stroke="#181A24" stroke-width="2.5" />
+          <path d="M 198 332 L 250 296 L 302 332" stroke="#DFDDD4" stroke-width="2" fill="none" />
+          <path d="M 197 270 L 250 306 L 303 270" fill="#F0EEE6" stroke="#181A24" stroke-width="2.2" stroke-linejoin="round" />
+          <circle cx="250" cy="302" r="12" fill="#FF5A26" stroke="#181A24" stroke-width="2" />
+          <path d="M 245 302 L 249 306 L 256 298" stroke="#FAF9F5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </g>
+
+        <!-- Claw Scratch Overlay (0.28s) -->
+        <g id="claw-slash-layer" filter="url(#slashGlow)">
+          <rect class="slash-flash" x="0" y="0" width="500" height="350" fill="#00F5D4" />
+          <path class="slash-line sl-1" d="M 55 35 L 175 125 L 162 140 L 315 245 L 445 325"
+                stroke="#00F5D4" stroke-linecap="round" stroke-linejoin="bevel" fill="none" />
+          <path class="slash-line sl-2" d="M 95 15 L 225 115 L 210 132 L 365 235 L 475 305"
+                stroke="#FAF9F5" stroke-linecap="round" stroke-linejoin="bevel" fill="none" />
+          <path class="slash-line sl-3" d="M 25 75 L 145 165 L 135 180 L 285 275 L 405 345"
+                stroke="#FF5A26" stroke-linecap="round" stroke-linejoin="bevel" fill="none" />
+        </g>
+      </svg>
+
+      <!-- Interactive Telemetry Report Pop-out Modal -->
+      <div class="report-overlay" id="reportOverlay">
+        <div class="ro-header">
+          <div class="ro-title">
+            <span>🛡️</span>
+            <span>SLOP-DEPS VERIFICATION REPORT</span>
+          </div>
+          <button class="ro-close" id="roClose">ESC [✕]</button>
+        </div>
+
+        <div class="ro-body">
+          <div class="ro-card">
+            <span style="color: rgba(245,244,240,0.5);">SCANNED TARGET:</span>
+            <span id="roTargetName" style="color: var(--cyan); font-weight: 700;">package.json</span>
+          </div>
+          <div class="ro-stats">
+            <div class="ro-stat-box">
+              <div class="ro-stat-num" id="roStatTotal">24</div>
+              <div class="ro-stat-label">TOTAL PACKAGES</div>
+            </div>
+            <div class="ro-stat-box">
+              <div class="ro-stat-num" style="color: var(--emerald);" id="roStatLegit">24</div>
+              <div class="ro-stat-label">VERIFIED LEGIT</div>
+            </div>
+            <div class="ro-stat-box">
+              <div class="ro-stat-num" style="color: var(--cyan);" id="roStatHallucinated">0</div>
+              <div class="ro-stat-label">HALLUCINATED</div>
+            </div>
+          </div>
+          <div class="ro-card" style="border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05);">
+            <span style="color: var(--emerald);">STATUS:</span>
+            <span style="color: #FFFFFF; font-weight: 600;">100% CLEAN // AIR-GAP SAFE</span>
+          </div>
+        </div>
+
+        <div class="ro-footer">
+          <button class="ro-btn" id="roChillBtn">LET CAT SIP COFFEE ☕</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Editorial Typography Speech Bubble -->
+    <section class="speech-region">
+      <div class="speech-pill" id="speech-pill">
+        <span class="speech-text" id="speech-text">meowww give me ur files meowww</span>
+      </div>
+      <div class="speech-sub" id="speech-sub">DRAG & DROP ANY FILE INTO THE VIEWPORT OR CLICK BELOW TO SCAN</div>
+    </section>
+
+    <!-- Hardware Controls Deck -->
+    <footer class="control-deck">
+      <button class="deck-btn active" data-target="idle">
+        <span class="deck-dot"></span>
+        <span>01 // IDLE</span>
+      </button>
+      <button class="deck-btn" data-target="drag">
+        <span class="deck-dot"></span>
+        <span>02 // DRAG</span>
+      </button>
+      <button class="deck-btn" data-target="hack">
+        <span class="deck-dot" style="background: var(--ginger);"></span>
+        <span>03 // PHATAK!</span>
+      </button>
+      <button class="deck-btn" data-target="report">
+        <span class="deck-dot"></span>
+        <span>04 // REPORT</span>
+      </button>
+      <button class="deck-btn" data-target="chill">
+        <span class="deck-dot"></span>
+        <span>05 // COFFEE</span>
+      </button>
+    </footer>
+  </main>
+
+  <!-- Privacy Challenge Banner -->
+  <div class="trust-banner">
+    <div class="trust-pill">
+      <span>🛡️</span>
+      <span><strong>Zero Telemetry by Physics.</strong> If you don't trust us, try turning off your Wi-Fi. 😉</span>
+    </div>
+    <p class="trust-sub">Direct TLS registry verification only. Your source code and AST graph never leave your box.</p>
+  </div>
+
+  <!-- Footer Signature -->
+  <footer class="footer-sig">
+    <span>Made for devs by</span>
+    <a href="https://github.com/viditx" target="_blank">Vidit</a>
+    <span>&</span>
+    <span style="color: var(--cyan); font-weight: 600;">Antigravity</span>
+  </footer>
+
+  <input type="file" id="file-input" style="display: none;" />
+
+  <script>
+    (() => {
+      // Audio Engine (Procedural Web Audio API)
+      let audioCtx = null;
+      let sfxEnabled = true;
+
+      function initAudio() {
+        if (!audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) audioCtx = new AC();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+      }
+
+      function playKeyClickSfx() {
+        if (!sfxEnabled) return;
+        initAudio();
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        const pitch = 450 + Math.random() * 550;
+        osc.frequency.setValueAtTime(pitch, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.035);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.04);
+      }
+
+      function playClawSlashSfx() {
+        if (!sfxEnabled) return;
+        initAudio();
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.28, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.09));
+        }
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(2400, now);
+        filter.frequency.exponentialRampToValueAtTime(450, now + 0.26);
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.27);
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        src.start(now);
+      }
+
+      function playReportChimeSfx() {
+        if (!sfxEnabled) return;
+        initAudio();
+        if (!audioCtx) return;
+        [587.33, 880, 1174.66].forEach((f, idx) => {
+          const now = audioCtx.currentTime + idx * 0.08;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, now);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.36);
+        });
+      }
+
+      // DOM Elements
+      const chassis = document.getElementById('chassis');
+      const dropzone = document.getElementById('dropzone');
+      const telemetryMode = document.getElementById('telemetry-mode');
+      const speechPill = document.getElementById('speech-pill');
+      const speechText = document.getElementById('speech-text');
+      const speechSub = document.getElementById('speech-sub');
+      const deckBtns = document.querySelectorAll('.deck-btn');
+      const clawSlashLayer = document.getElementById('claw-slash-layer');
+      const fileInput = document.getElementById('file-input');
+      const propEnvelope = document.getElementById('prop-envelope');
+      const audioBtn = document.getElementById('audio-btn');
+      const audioIcon = document.getElementById('audio-icon');
+      const audioLabel = document.getElementById('audio-label');
+
+      // Modal Elements
+      const reportOverlay = document.getElementById('reportOverlay');
+      const roClose = document.getElementById('roClose');
+      const roChillBtn = document.getElementById('roChillBtn');
+      const roTargetName = document.getElementById('roTargetName');
+      const roStatTotal = document.getElementById('roStatTotal');
+      const roStatLegit = document.getElementById('roStatLegit');
+      const roStatHallucinated = document.getElementById('roStatHallucinated');
+
+      // Pupils
+      const pupilL = document.getElementById('pupil-left');
+      const pupilR = document.getElementById('pupil-right');
+      const eyelids = document.querySelectorAll('.eyelid-top, .eyelid-bottom');
+
+      let currentState = 'idle';
+      let sequenceTimers = [];
+      let hackTypeInterval = null;
+
+      const STATE_META = {
+        idle: {
+          telemetry: '[STATE: IDLE_SENTINEL]',
+          speech: 'meowww give me ur files meowww 🐾',
+          sub: 'DRAG & DROP ANY FILE INTO THE VIEWPORT OR CLICK TO SCAN'
+        },
+        drag: {
+          telemetry: '[STATE: TARGET_LOCKED]',
+          speech: 'OOOOH drop it right here meowww!! ⚡',
+          sub: 'RELEASE TO EXECUTE AIR-GAP DEPENDENCY FIREWALL'
+        },
+        hack: {
+          telemetry: '[STATE: AST_PARSING_HACK]',
+          speech: 'thap-thap-thap-thap parsing dependencies meowww 💥',
+          sub: 'INSPECTING IMPORTS ACROSS REGISTRIES IN PARALLEL'
+        },
+        report: {
+          telemetry: '[STATE: REPORT_READY]',
+          speech: "Meowww! Here's ur report ✉️ (Click to open)",
+          sub: 'ALL VERIFIED // CLICK THE ENVELOPE TO EXPAND TELEMETRY'
+        },
+        chill: {
+          telemetry: '[STATE: REPO_SECURED]',
+          speech: '*sippp* clean repo! zero hallucinations detected ☕',
+          sub: 'CHILL MODE ACTIVE // CAT IS SIPPING ARTISAN ROAST'
+        }
+      };
+
+      // Audio Toggle
+      audioBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sfxEnabled = !sfxEnabled;
+        audioIcon.textContent = sfxEnabled ? '🔊' : '🔇';
+        audioLabel.textContent = sfxEnabled ? 'SFX: ON' : 'SFX: OFF';
+      });
+
+      // Eyes Mouse Tracking
+      let pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      window.addEventListener('mousemove', (e) => {
+        pointer.x = e.clientX;
+        pointer.y = e.clientY;
+      });
+
+      const eyeState = {
+        left: { curX: 0, curY: 0 },
+        right: { curX: 0, curY: 0 }
+      };
+
+      function animateEyesLoop() {
+        const catRect = dropzone.getBoundingClientRect();
+        const centerL = { x: catRect.left + catRect.width * 0.424, y: catRect.top + catRect.height * 0.474 };
+        const centerR = { x: catRect.left + catRect.width * 0.576, y: catRect.top + catRect.height * 0.474 };
+
+        const maxDist = 9.5;
+        let targetL = { x: 0, y: 0 };
+        let targetR = { x: 0, y: 0 };
+
+        if (currentState === 'hack') {
+          const scan = Math.sin(performance.now() * 0.035) * 8;
+          targetL = { x: scan, y: 8 };
+          targetR = { x: scan, y: 8 };
+        } else if (currentState === 'chill') {
+          targetL = { x: 0, y: 7 };
+          targetR = { x: 0, y: 7 };
+        } else {
+          const dxL = pointer.x - centerL.x;
+          const dyL = pointer.y - centerL.y;
+          const distL = Math.hypot(dxL, dyL);
+          const angL = Math.atan2(dyL, dxL);
+          const lenL = Math.min(maxDist, distL * 0.045);
+          targetL = { x: Math.cos(angL) * lenL, y: Math.sin(angL) * lenL };
+
+          const dxR = pointer.x - centerR.x;
+          const dyR = pointer.y - centerR.y;
+          const distR = Math.hypot(dxR, dyR);
+          const angR = Math.atan2(dyR, dxR);
+          const lenR = Math.min(maxDist, distR * 0.045);
+          targetR = { x: Math.cos(angR) * lenR, y: Math.sin(angR) * lenR };
+        }
+
+        eyeState.left.curX += (targetL.x - eyeState.left.curX) * 0.18;
+        eyeState.left.curY += (targetL.y - eyeState.left.curY) * 0.18;
+        eyeState.right.curX += (targetR.x - eyeState.right.curX) * 0.18;
+        eyeState.right.curY += (targetR.y - eyeState.right.curY) * 0.18;
+
+        pupilL.setAttribute('transform', `translate(${eyeState.left.curX.toFixed(2)}, ${eyeState.left.curY.toFixed(2)})`);
+        pupilR.setAttribute('transform', `translate(${eyeState.right.curX.toFixed(2)}, ${eyeState.right.curY.toFixed(2)})`);
+
+        requestAnimationFrame(animateEyesLoop);
+      }
+      requestAnimationFrame(animateEyesLoop);
+
+      // Autonomous Blinking
+      function scheduleBlink() {
+        const nextDelay = currentState === 'chill' ? 2200 + Math.random() * 1800 : 2800 + Math.random() * 3400;
+        setTimeout(() => {
+          if (currentState !== 'drag' && currentState !== 'hack') {
+            eyelids.forEach(el => el.classList.add('blink-now'));
+            setTimeout(() => {
+              eyelids.forEach(el => el.classList.remove('blink-now'));
+            }, currentState === 'chill' ? 260 : 140);
+          }
+          scheduleBlink();
+        }, nextDelay);
+      }
+      scheduleBlink();
+
+      // State Controller
+      function clearSequenceTimers() {
+        sequenceTimers.forEach(t => clearTimeout(t));
+        sequenceTimers = [];
+        if (hackTypeInterval) {
+          clearInterval(hackTypeInterval);
+          hackTypeInterval = null;
+        }
+      }
+
+      function triggerClawSlashVisual() {
+        clawSlashLayer.classList.remove('active');
+        chassis.classList.remove('shake');
+        void clawSlashLayer.offsetWidth;
+        clawSlashLayer.classList.add('active');
+        chassis.classList.add('shake');
+        playClawSlashSfx();
+
+        setTimeout(() => {
+          clawSlashLayer.classList.remove('active');
+          chassis.classList.remove('shake');
+        }, 420);
+      }
+
+      function setState(newState, { autoSequence = false, fileName = null } = {}) {
+        clearSequenceTimers();
+        currentState = newState;
+        chassis.setAttribute('data-state', newState);
+        chassis.classList.toggle('drag-active', newState === 'drag');
+
+        deckBtns.forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.target === newState);
+        });
+
+        const meta = STATE_META[newState];
+        telemetryMode.textContent = meta.telemetry;
+        speechText.textContent = newState === 'hack' && fileName ? `shredding "${fileName}" meowww 💥` : meta.speech;
+        speechSub.textContent = meta.sub;
+
+        speechPill.classList.remove('pop');
+        void speechPill.offsetWidth;
+        speechPill.classList.add('pop');
+        setTimeout(() => speechPill.classList.remove('pop'), 320);
+
+        if (newState === 'hack') {
+          triggerClawSlashVisual();
+          hackTypeInterval = setInterval(playKeyClickSfx, 95);
+
+          if (autoSequence) {
+            const t1 = setTimeout(() => {
+              setState('report', { autoSequence: true });
+            }, 2400);
+            sequenceTimers.push(t1);
+          }
+        } else if (newState === 'report') {
+          playReportChimeSfx();
+          if (autoSequence) {
+            const t2 = setTimeout(() => {
+              setState('chill');
+            }, 4500);
+            sequenceTimers.push(t2);
+          }
+        }
+      }
+
+      // Deck Buttons Bind
+      deckBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const target = btn.dataset.target;
+          setState(target, { autoSequence: target === 'hack' });
+        });
+      });
+
+      // Envelope Click -> Opens Pop-out Report Modal!
+      propEnvelope.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearSequenceTimers();
+        reportOverlay.classList.add('open');
+        playReportChimeSfx();
+      });
+
+      roClose.addEventListener('click', () => {
+        reportOverlay.classList.remove('open');
+      });
+
+      roChillBtn.addEventListener('click', () => {
+        reportOverlay.classList.remove('open');
+        setState('chill');
+      });
+
+      // Viewport Click triggers file picker on idle
+      dropzone.addEventListener('click', () => {
+        if (currentState === 'idle') fileInput.click();
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          const file = e.target.files[0];
+          handleFileParse(file);
+          fileInput.value = '';
+        }
+      });
+
+      // Drag and Drop
+      let dragDepth = 0;
+      window.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragDepth++;
+        if (currentState !== 'drag') setState('drag');
+      });
+
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        pointer.x = e.clientX;
+        pointer.y = e.clientY;
+      });
+
+      window.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0 && currentState === 'drag') setState('idle');
+      });
+
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragDepth = 0;
+        const droppedFile = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0] ? e.dataTransfer.files[0] : null;
+        if (droppedFile) {
+          handleFileParse(droppedFile);
+        } else {
+          setState('hack', { autoSequence: true, fileName: 'payload.json' });
+        }
+      });
+
+      function handleFileParse(file) {
+        roTargetName.textContent = file.name;
+        // Client-side quick inspection
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const text = evt.target.result;
+          let pkgCount = 12;
+          if (file.name.endsWith('.json')) {
+            try {
+              const p = JSON.parse(text);
+              const deps = Object.keys(p.dependencies || {}).concat(Object.keys(p.devDependencies || {}));
+              pkgCount = deps.length || 8;
+            } catch {}
+          } else {
+            const matches = text.match(/import\s|require\(|from\s/g);
+            pkgCount = matches ? matches.length : 14;
+          }
+          roStatTotal.textContent = pkgCount;
+          roStatLegit.textContent = pkgCount;
+          roStatHallucinated.textContent = '0';
+        };
+        reader.readAsText(file.slice(0, 50000));
+
+        setState('hack', { autoSequence: true, fileName: file.name });
+      }
+
+      // Hotkeys [1-5]
+      window.addEventListener('keydown', (e) => {
+        const keyMap = { '1': 'idle', '2': 'drag', '3': 'hack', '4': 'report', '5': 'chill' };
+        if (keyMap[e.key]) {
+          const target = keyMap[e.key];
+          setState(target, { autoSequence: target === 'hack' });
+        } else if (e.key === 'Escape') {
+          reportOverlay.classList.remove('open');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

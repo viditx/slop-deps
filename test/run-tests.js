@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { scanDirectory } from '../src/index.js';
 import { extractJsImports } from '../src/extractors/js-ts.js';
-import { extractPackageJson, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy } from '../src/extractors/manifests.js';
+import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy } from '../src/extractors/manifests.js';
 import { extractPythonImports } from '../src/extractors/python.js';
 import { resolvePyPiDistributionName } from '../src/pypi-map.js';
 import { isBuiltin } from '../src/builtins.js';
+import { checkNpmPackage } from '../src/registries/npm.js';
+import { checkPyPiPackage } from '../src/registries/pypi.js';
+import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 async function run() {
@@ -320,7 +323,7 @@ async function run() {
 
   const vResult = spawnSync(process.execPath, [binPath, '--version'], { encoding: 'utf-8' });
   assert.equal(vResult.status, 0, '--version must exit 0');
-  assert.ok(vResult.stdout.includes('1.1.0'), '--version must output version');
+  assert.ok(vResult.stdout.includes('1.4.0'), '--version must output version');
 
   const invResult = spawnSync(process.execPath, [binPath, '--unknown-flag'], { encoding: 'utf-8' });
   assert.equal(invResult.status, 2, 'Unrecognized option must exit 2');
@@ -360,6 +363,589 @@ async function run() {
   assert.ok(isBuiltin('bmesh', 'pypi'), 'bmesh must be recognized as Blender builtin');
   assert.ok(isBuiltin('sidecar_sdk', 'pypi'), 'sidecar_sdk must be recognized as Antigravity host builtin');
   console.log('  ✔ PASS: PEP 508 markers, dynamic pywin32, Google auth/APIs, and host builtins verified\n');
+
+  // Test 20: Regex literal with braces isolates brace counting
+  console.log('Test 20: Regex literal with braces isolates brace counting');
+  const regexCode = `
+    const rx1 = /[{]/;
+    const rx2 = /\\{/;
+    const rx3 = /[a-z{}]/;
+    import 'pkg-after-regex';
+    export * from 'pkg-export-after-regex';
+  `;
+  const regexImports = extractJsImports(regexCode, 'test-regex.js').map(p => p.name);
+  assert.ok(regexImports.includes('pkg-after-regex'), 'Import following regex with braces must be extracted');
+  assert.ok(regexImports.includes('pkg-export-after-regex'), 'Export following regex with braces must be extracted');
+  console.log('  ✔ PASS: Regex character classes with braces do not corrupt AST scope\n');
+
+  // Test 21: Dynamic import inside template literal expressions
+  console.log('Test 21: Dynamic import inside template literal expressions');
+  const templateCode = "const p = `endpoint: ${import('pkg-in-template')} and ${await import('pkg-awaited')}`;";
+  const templateImports = extractJsImports(templateCode, 'test-template.js').map(p => p.name);
+  assert.ok(templateImports.includes('pkg-in-template'), 'Dynamic import inside template expression must be extracted');
+  assert.ok(templateImports.includes('pkg-awaited'), 'Awaited dynamic import inside template expression must be extracted');
+  console.log('  ✔ PASS: Template literal interpolations parsed without swallowing dynamic imports\n');
+
+  // Test 22: Python wildcard imports
+  console.log('Test 22: Python wildcard imports');
+  const pyWildcard = `
+    from math_super_pkg import *
+    from os_extended import *
+  `;
+  const wildcardImports = extractPythonImports(pyWildcard, 'test_wildcard.py').map(p => p.name);
+  assert.ok(wildcardImports.includes('math_super_pkg'), 'from ... import * must be extracted');
+  assert.ok(wildcardImports.includes('os_extended'), 'from ... import * must be extracted');
+  console.log('  ✔ PASS: Python wildcard from ... import * extracted cleanly\n');
+
+  // Test 23: Python inline statements (with, async with, async for, def)
+  console.log('Test 23: Python inline statements with colons');
+  const pyInline = `
+    with context_manager(): import pkg_with
+    async with async_ctx(): import pkg_async_with
+    def helper(): import pkg_def
+    for item in items: import pkg_for
+    async for item in async_items: import pkg_async_for
+  `;
+  const inlineImports = extractPythonImports(pyInline, 'test_inline.py').map(p => p.name);
+  assert.ok(inlineImports.includes('pkg_with'), 'Import after inline with must be extracted');
+  assert.ok(inlineImports.includes('pkg_async_with'), 'Import after inline async with must be extracted');
+  assert.ok(inlineImports.includes('pkg_def'), 'Import after inline def must be extracted');
+  assert.ok(inlineImports.includes('pkg_for'), 'Import after inline for must be extracted');
+  assert.ok(inlineImports.includes('pkg_async_for'), 'Import after inline async for must be extracted');
+  console.log('  ✔ PASS: Python colon statements correctly split for inline imports\n');
+
+  // Test 24: package.json subpath dependency sanitization
+  console.log('Test 24: package.json subpath dependency keys');
+  const subpathPkgJson = JSON.stringify({
+    dependencies: {
+      '@my-scope/some-lib/subpath': '^1.0.0',
+      'regular-lib/feature': '^2.0.0'
+    }
+  });
+  const subpathImports = extractPackageJson(subpathPkgJson).map(p => p.name);
+  assert.ok(subpathImports.includes('@my-scope/some-lib'), 'Scoped subpath key must be sanitized to package name');
+  assert.ok(subpathImports.includes('regular-lib'), 'Unscoped subpath key must be sanitized to package name');
+  assert.ok(!subpathImports.includes('@my-scope/some-lib/subpath'), 'Raw subpath must not be used');
+  console.log('  ✔ PASS: package.json subpath dependency keys stripped of trailing paths\n');
+
+  // Test 25: pyproject.toml [build-system] and [tool.flit.metadata] requires
+  console.log('Test 25: pyproject.toml build-system and flit requires');
+  const buildSysToml = `
+    [build-system]
+    requires = ["flit_core >=3.2,<4", "setuptools>=61.0"]
+    build-backend = "flit_core.buildapi"
+
+    [tool.flit.metadata]
+    module = "my_tool"
+    requires = ["requests >=2.20"]
+  `;
+  const buildSysImports = extractPyProjectToml(buildSysToml).map(p => p.name);
+  assert.ok(buildSysImports.includes('flit_core'), 'build-system requires must be extracted');
+  assert.ok(buildSysImports.includes('setuptools'), 'build-system requires must be extracted');
+  assert.ok(buildSysImports.includes('requests'), 'flit metadata requires must be extracted');
+  console.log('  ✔ PASS: pyproject.toml build-system and flit metadata requires extracted\n');
+
+  // Test 26: CLI positional directory argument & invalid package specifiers
+  console.log('Test 26: CLI positional argument & invalid npm specifier handling');
+  const posResult = spawnSync(process.execPath, [binPath, 'src', '--json'], { encoding: 'utf-8' });
+  assert.equal(posResult.status, 0, 'slop-deps <dir> --json must exit 0 on clean dir');
+  const posParsed = JSON.parse(posResult.stdout);
+  assert.equal(posParsed.stats.critical, 0, 'src scan via positional arg must have 0 critical');
+
+  const inv1 = await checkNpmPackage(' ');
+  assert.equal(inv1.status, 'INVALID', 'Whitespace npm package must return INVALID');
+  const inv2 = await checkNpmPackage('..');
+  assert.equal(inv2.status, 'INVALID', 'Path traversal specifier must return INVALID');
+  console.log('  ✔ PASS: CLI positional directory argument and npm invalid specifier validation verified\n');
+
+  // Test 27: Block comments without newlines do not fuse tokens
+  console.log('Test 27: Block comments without newlines do not fuse tokens');
+  const commentCode = "import/*comment*/foo from 'evil-comment-pkg';\nexport/*comment*/{ bar } from 'evil-export-pkg';";
+  const commentImports = extractJsImports(commentCode, 'test-comment.js').map(p => p.name);
+  assert.ok(commentImports.includes('evil-comment-pkg'), 'Import with newline-less block comment must be extracted');
+  assert.ok(commentImports.includes('evil-export-pkg'), 'Export with newline-less block comment must be extracted');
+  console.log('  ✔ PASS: Token fusion across inline block comments prevented\n');
+
+  // Test 28: TypeScript generic arrow function does not drop subsequent dynamic imports
+  console.log('Test 28: TypeScript generic arrow function does not drop subsequent dynamic imports');
+  const genericCode = "const fn = <T>(v: T) => { const p = require('pkg-after-generic'); };";
+  const genericImports = extractJsImports(genericCode, 'test-generic.ts').map(p => p.name);
+  assert.ok(genericImports.includes('pkg-after-generic'), 'require() after generic arrow function must be extracted');
+  console.log('  ✔ PASS: TypeScript generic arrow functions do not corrupt tag tracker\n');
+
+  // Test 29: Comparison operator does not drop subsequent dynamic imports
+  console.log('Test 29: Comparison operator does not drop subsequent dynamic imports');
+  const compCode = "const x = a <b ? foo : c > d; const p = require('pkg-after-comparison');";
+  const compImports = extractJsImports(compCode, 'test-comp.js').map(p => p.name);
+  assert.ok(compImports.includes('pkg-after-comparison'), 'require() after comparison expression must be extracted');
+  console.log('  ✔ PASS: Comparison operators outside JSX correctly distinguished from tags\n');
+
+  // Test 30: Dynamic import inside JSX embedded expression
+  console.log('Test 30: Dynamic import inside JSX embedded expression');
+  const jsxExprCode = "<div>{import('dynamic-jsx-child-pkg')}</div>";
+  const jsxExprImports = extractJsImports(jsxExprCode, 'test-jsx-expr.tsx').map(p => p.name);
+  assert.ok(jsxExprImports.includes('dynamic-jsx-child-pkg'), 'Dynamic import inside JSX {} expression must be extracted');
+  console.log('  ✔ PASS: Dynamic imports inside JSX expressions preserved while child text is ignored\n');
+
+  // Test 31: Scoped package isolation against local folder names
+  console.log('Test 31: Scoped package isolation against local folder names');
+  const tempScanDir = path.resolve('test_temp_scope_isolation');
+  fs.mkdirSync(path.join(tempScanDir, 'prisma'), { recursive: true });
+  fs.writeFileSync(path.join(tempScanDir, 'index.js'), "import '@prisma/test-nonexistent-fixture-404';");
+  const scopeScanRes = await scanDirectory(tempScanDir);
+  fs.rmSync(tempScanDir, { recursive: true, force: true });
+  const scopeFindings = scopeScanRes.findings.map(f => f.name);
+  assert.ok(scopeFindings.includes('@prisma/test-nonexistent-fixture-404'), 'Scoped import must NOT be whitelisted simply because a matching directory exists');
+  console.log('  ✔ PASS: Scoped package names verified even when local directory matches scope\n');
+
+  // Test 32: Poetry and Pipfile local path, git, and url dependencies skipped
+  console.log('Test 32: Poetry and Pipfile local path, git, and url dependencies skipped');
+  const poetryToml = `
+    [tool.poetry.dependencies]
+    local-tool = { path = "../local-tool" }
+    git-tool = { git = "https://github.com/org/tool.git" }
+    url-tool = { url = "https://example.com/tool.whl" }
+    real-poetry-pkg = "^1.0.0"
+  `;
+  const poetryDeps = extractPyProjectToml(poetryToml).map(p => p.name);
+  assert.ok(!poetryDeps.includes('local-tool'), 'Poetry path dependency must be skipped');
+  assert.ok(!poetryDeps.includes('git-tool'), 'Poetry git dependency must be skipped');
+  assert.ok(!poetryDeps.includes('url-tool'), 'Poetry url dependency must be skipped');
+  assert.ok(poetryDeps.includes('real-poetry-pkg'), 'Real registry dependency must be extracted');
+
+  const pipfileContent = `
+    [packages]
+    local-pip = { path = "./my-pkg", editable = true }
+    git-pip = { git = "https://github.com/org/repo.git" }
+    file-pip = { file = "https://example.com/file.whl" }
+    real-pip-pkg = "*"
+  `;
+  const pipfileDeps = extractPipfile(pipfileContent).map(p => p.name);
+  assert.ok(!pipfileDeps.includes('local-pip'), 'Pipfile path dependency must be skipped');
+  assert.ok(!pipfileDeps.includes('git-pip'), 'Pipfile git dependency must be skipped');
+  assert.ok(!pipfileDeps.includes('file-pip'), 'Pipfile file dependency must be skipped');
+  assert.ok(pipfileDeps.includes('real-pip-pkg'), 'Real Pipfile package must be extracted');
+  console.log('  ✔ PASS: Local and VCS dependencies in Poetry and Pipfile ignored cleanly\n');
+
+  // Test 33: npm package.json with git SSH URL or patch: protocol skipped
+  console.log('Test 33: npm package.json git@ and patch: protocol dependencies skipped');
+  const pkgJsonProtocols = JSON.stringify({
+    dependencies: {
+      'private-ssh-lib': 'git@github.com:my-org/private-ssh-lib.git',
+      'patched-lib': 'patch:foo@1.0.0#./patches/foo.patch',
+      'real-manifest-pkg': '^2.0.0'
+    }
+  });
+  const protoDeps = extractPackageJson(pkgJsonProtocols).map(p => p.name);
+  assert.ok(!protoDeps.includes('private-ssh-lib'), 'git@ SSH dependency must be skipped');
+  assert.ok(!protoDeps.includes('patched-lib'), 'patch: protocol dependency must be skipped');
+  assert.ok(protoDeps.includes('real-manifest-pkg'), 'Standard dependency must be extracted');
+  console.log('  ✔ PASS: git@ SSH and patch: protocol ignored in package.json\n');
+
+  // Test 34: Python paho.mqtt canonical namespace mapping and nt builtin
+  console.log('Test 34: Python paho.mqtt canonical mapping and nt builtin');
+  const pyPaho = "import paho.mqtt.client as mqtt\nfrom paho.mqtt import publish";
+  const pahoImports = extractPythonImports(pyPaho).map(p => p.name);
+  assert.ok(pahoImports.includes('paho.mqtt'), 'paho.mqtt namespace must be extracted as paho.mqtt');
+  assert.equal(resolvePyPiDistributionName('paho.mqtt'), 'paho-mqtt');
+  assert.ok(isBuiltin('nt', 'pypi'), 'nt must be recognized as Python Windows stdlib builtin');
+  console.log('  ✔ PASS: paho.mqtt mapped to paho-mqtt and nt Windows builtin verified\n');
+
+  // Test 35: PyPI registry upfront input sanitization
+  console.log('Test 35: PyPI registry upfront input sanitization');
+  const pypiInv1 = await checkPyPiPackage(' ');
+  assert.equal(pypiInv1.status, 'INVALID', 'Whitespace PyPI package must return INVALID');
+  const pypiInv2 = await checkPyPiPackage('..');
+  assert.equal(pypiInv2.status, 'INVALID', 'Path traversal PyPI package must return INVALID');
+  console.log('  ✔ PASS: PyPI invalid specifier sanitization verified\n');
+
+  // Test 36: pyproject.toml inline array close must not leak following keys as deps
+  console.log('Test 36: pyproject.toml inline-closed dependency array isolation');
+  const inlineToml = `
+    [project]
+    name = "demo"
+    dependencies = [
+      "requests>=2.0" ]
+    keywords = ["security", "scanner"]
+    authors = [{ name = "Vidit" }]
+  `;
+  const inlineDeps = extractPyProjectToml(inlineToml).map(p => p.name);
+  assert.ok(inlineDeps.includes('requests'), 'Inline-closed array must still extract real dependency');
+  assert.ok(!inlineDeps.includes('security'), 'keywords strings after inline close must NOT become deps');
+  assert.ok(!inlineDeps.includes('scanner'), 'keywords strings after inline close must NOT become deps');
+  assert.ok(!inlineDeps.includes('vidit'), 'authors strings after inline close must NOT become deps');
+  console.log('  ✔ PASS: keys following inline-closed dependency array are ignored\n');
+
+  // Test 37: requirements.txt local-path and scheme direct references skipped
+  console.log('Test 37: requirements.txt local path direct references skipped');
+  const localReq = [
+    'numpy @ file:///tmp/numpy-1.0.zip',
+    'flask @ ./vendor/flask.zip',
+    'django @ /opt/wheels/django.whl',
+    'gunicorn==21.2'
+  ].join('\n');
+  const localReqDeps = extractRequirementsTxt(localReq).map(p => p.name);
+  assert.ok(!localReqDeps.includes('numpy'), 'file:// direct reference must be skipped');
+  assert.ok(!localReqDeps.includes('flask'), 'Relative ./path direct reference must be skipped');
+  assert.ok(!localReqDeps.includes('django'), 'Absolute /path direct reference must be skipped');
+  assert.ok(localReqDeps.includes('gunicorn'), 'Regular pinned requirement must be extracted');
+  console.log('  ✔ PASS: file://, relative and absolute path direct refs ignored\n');
+
+  // Test 38: Pipfile extras syntax requests[socks] extracted with extras stripped
+  console.log('Test 38: Pipfile extras key syntax');
+  const extrasPip = `
+    [packages]
+    requests[socks] = "*"
+    celery = "*"
+  `;
+  const extrasDeps = extractPipfile(extrasPip).map(p => p.name);
+  assert.ok(extrasDeps.includes('requests'), 'requests[socks] key must extract base package name');
+  assert.ok(!extrasDeps.includes('requests[socks]'), 'Extras suffix must be stripped from name');
+  assert.ok(extrasDeps.includes('celery'), 'Plain Pipfile key must still extract');
+  console.log('  ✔ PASS: Pipfile extras keys map to base package names\n');
+
+  // Test 39: package.json bundledDependencies / bundleDependencies arrays scanned
+  console.log('Test 39: package.json bundled dependency arrays scanned');
+  const bundledJson = JSON.stringify({
+    name: 'demo-app',
+    bundledDependencies: ['fake-bundled-hallucinated-xyz'],
+    bundleDependencies: ['fake-bundle-hallucinated-abc'],
+    dependencies: { react: '^18.0.0' }
+  });
+  const bundledDeps = extractPackageJson(bundledJson).map(p => p.name);
+  assert.ok(bundledDeps.includes('fake-bundled-hallucinated-xyz'), 'bundledDependencies array entries must be extracted');
+  assert.ok(bundledDeps.includes('fake-bundle-hallucinated-abc'), 'bundleDependencies array entries must be extracted');
+  assert.ok(bundledDeps.includes('react'), 'Regular dependencies must still be extracted');
+  console.log('  ✔ PASS: bundled dependency arrays now verified\n');
+
+  // Test 40: OpenTelemetry core submodules map to real dists, not invented 404 names
+  console.log('Test 40: OpenTelemetry submodule distribution mapping');
+  assert.equal(resolvePyPiDistributionName('opentelemetry.trace'), 'opentelemetry-api');
+  assert.equal(resolvePyPiDistributionName('opentelemetry.metrics'), 'opentelemetry-api');
+  assert.equal(resolvePyPiDistributionName('opentelemetry.context'), 'opentelemetry-api');
+  assert.equal(resolvePyPiDistributionName('opentelemetry.baggage'), 'opentelemetry-api');
+  assert.equal(resolvePyPiDistributionName('opentelemetry.sdk.trace'), 'opentelemetry-sdk');
+  assert.equal(resolvePyPiDistributionName('opentelemetry.sdk.metrics.export'), 'opentelemetry-sdk');
+  assert.equal(resolvePyPiDistributionName('opentelemetry.instrumentation.requests'), 'opentelemetry-instrumentation-requests');
+  const otelApiCheck = await checkPyPiPackage('opentelemetry.trace');
+  assert.notEqual(otelApiCheck.status, 'HALLUCINATED', 'opentelemetry.trace must resolve to an existing PyPI dist, not a false CRITICAL');
+  console.log('  ✔ PASS: OTel core modules map to opentelemetry-api/-sdk, no false hallucinations\n');
+
+  // Test 41: JS import line numbers accurate after multi-line strings
+  console.log('Test 41: JS import line number accuracy');
+  const lineNumCode = [
+    'const s = `line1',
+    'line2',
+    'line3`',
+    "import first from 'react';",
+    "import second from 'lodash';"
+  ].join('\n');
+  const lineNumImports = extractJsImports(lineNumCode, 'lines.js');
+  const byName = Object.fromEntries(lineNumImports.map(p => [p.name, p.line]));
+  assert.equal(byName.react, 4, `react must be line 4, got ${byName.react}`);
+  assert.equal(byName.lodash, 5, `lodash must be line 5, got ${byName.lodash}`);
+  const requireCode = 'const x = 1\nconst y = require("express")';
+  const reqImports = extractJsImports(requireCode, 'req.js');
+  assert.equal(reqImports[0].line, 2, `require on line 2 must report 2, got ${reqImports[0].line}`);
+  console.log('  ✔ PASS: line numbers exact for imports after multi-line strings and require\n');
+
+  // Test 42: pip constraints.txt files are scanned as requirement manifests
+  console.log('Test 42: constraints.txt scanned as requirements manifest');
+  const tempConstraintsDir = path.resolve('test_temp_constraints');
+  fs.mkdirSync(tempConstraintsDir, { recursive: true });
+  fs.writeFileSync(path.join(tempConstraintsDir, 'constraints.txt'), 'fake-constraints-hallucinated-xyz==1.0.0\n');
+  const constraintsScan = await scanDirectory(tempConstraintsDir);
+  fs.rmSync(tempConstraintsDir, { recursive: true, force: true });
+  const constraintNames = constraintsScan.findings.filter(f => f.risk === 'CRITICAL').map(f => f.name);
+  assert.ok(constraintNames.includes('fake-constraints-hallucinated-xyz'), 'Hallucinated package in constraints.txt must be caught');
+  console.log('  ✔ PASS: constraints.txt entries verified against PyPI\n');
+
+  // Test 43: Typosquat engine — variants, lookalikes, age gating
+  console.log('Test 43: Typosquat engine detection');
+  const { findTyposquatCandidate, typosquatSuggestion } = await import('../src/typosquat.js');
+  const lodaeh = findTyposquatCandidate('lodaeh', 'npm', 10);
+  assert.equal(lodaeh.canonical, 'lodash', 'lodaeh must map to lodash');
+  assert.equal(lodaeh.severity, 'suspect', 'Young lodaeh must be a suspect');
+  const m0rgan = findTyposquatCandidate('m0rgan', 'npm', 10);
+  assert.ok(m0rgan && m0rgan.canonical === 'morgan' && m0rgan.distance === 0, 'm0rgan must be a zero-distance lookalike of morgan');
+  const reqeusts = findTyposquatCandidate('reqeusts', 'pypi', 10);
+  assert.ok(reqeusts && reqeusts.canonical === 'requests' && reqeusts.distance === 1, 'reqeusts must be a distance-1 transposition of requests');
+  assert.equal(findTyposquatCandidate('react', 'npm', 10), null, 'Exact popular package must not flag itself');
+  const oldSquat = findTyposquatCandidate('lodaeh', 'npm', 800);
+  assert.equal(oldSquat.severity, 'suggestion', 'Established (1yr+) close names downgrade to suggestion');
+  assert.equal(typosquatSuggestion('lodaeh', 'npm'), 'lodash', 'Dead-name suggestion must be offered');
+  assert.equal(findTyposquatCandidate('colourss', 'pypi', 5), null, 'Distant names must not over-match');
+  console.log('  ✔ PASS: typosquat variants, lookalike chars, transpositions, age gating verified\n');
+
+  // Test 44: Live registry wires typosquat + install-script signals (react must stay CLEAN)
+  console.log('Test 44: Registry signal wiring keeps legit giants clean');
+  const reactCheck = await checkNpmPackage('react');
+  assert.equal(reactCheck.risk, 'CLEAN', 'react must remain CLEAN with typosquat engine active');
+  assert.equal(reactCheck.status, 'VERIFIED', 'react must remain VERIFIED');
+  const requestsCheck = await checkPyPiPackage('requests');
+  assert.equal(requestsCheck.risk, 'CLEAN', 'requests must remain CLEAN on PyPI side');
+  console.log('  ✔ PASS: top popular packages verified without false positives\n');
+
+  // Test 45: SARIF 2.1.0 output structure
+  console.log('Test 45: SARIF 2.1.0 output structure');
+  const { toSarif } = await import('../src/sarif.js');
+  const sarif = toSarif([
+    { name: 'fake-a', ecosystem: 'npm', risk: 'CRITICAL', status: 'HALLUCINATED', message: 'does not exist', file: 'src\\app.js', line: 12 },
+    { name: 'fake-b', ecosystem: 'pypi', risk: 'HIGH', status: 'SUSPICIOUS', message: 'typosquat risk', file: 'pkg/mod.py' },
+    { name: 'react', ecosystem: 'npm', risk: 'CLEAN', status: 'VERIFIED', message: 'legit', file: 'x.js', line: 1 }
+  ]);
+  assert.equal(sarif.version, '2.1.0', 'SARIF version must be 2.1.0');
+  assert.equal(sarif.runs.length, 1, 'Exactly one run');
+  assert.equal(sarif.runs[0].tool.driver.name, 'slop-deps', 'Driver name must be slop-deps');
+  assert.equal(sarif.runs[0].results.length, 2, 'CLEAN findings must be omitted from results');
+  assert.equal(sarif.runs[0].results[0].level, 'error', 'CRITICAL maps to error level');
+  assert.equal(sarif.runs[0].results[0].ruleId, 'SD001', 'CRITICAL maps to hallucinatedPackage rule');
+  assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, 'src/app.js', 'Windows path separators must become forward slashes');
+  assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.region.startLine, 12, 'Line number preserved');
+  assert.equal(sarif.runs[0].results[1].level, 'warning', 'HIGH maps to warning level');
+  assert.ok(sarif.runs[0].tool.driver.rules.every(r => ['SD001', 'SD002', 'SD003'].includes(r.id)), 'Rule ids valid');
+  console.log('  ✔ PASS: SARIF structure, levels, paths and rule mapping verified\n');
+
+  // Test 46: --staged pre-commit mode scans only git-staged files
+  console.log('Test 46: staged-only scan mode');
+  const { scanStagedFiles } = await import('../src/index.js');
+  const tempStaged = path.resolve('test_temp_staged');
+  fs.mkdirSync(tempStaged, { recursive: true });
+  fs.writeFileSync(path.join(tempStaged, 'staged_app.py'), 'import fake_staged_hallucinated_abc\n');
+  fs.writeFileSync(path.join(tempStaged, 'unstaged_app.py'), 'import fake_unstaged_hallucinated_xyz\n');
+  try {
+    const gitInit = spawnSync('git', ['init'], { cwd: tempStaged, encoding: 'utf-8' });
+    assert.equal(gitInit.status, 0, 'git init must succeed in temp repo');
+    spawnSync('git', ['add', 'staged_app.py'], { cwd: tempStaged, encoding: 'utf-8' });
+    const stagedResult = await scanStagedFiles(tempStaged);
+    const stagedNames = stagedResult.findings.map(f => f.name);
+    assert.ok(stagedNames.includes('fake_staged_hallucinated_abc'), 'Staged file import must be caught');
+    assert.ok(!stagedNames.includes('fake_unstaged_hallucinated_xyz'), 'Unstaged file import must be ignored');
+    assert.equal(stagedResult.staged, true, 'Result must be marked staged');
+    assert.equal(stagedResult.stagedFileCount, 1, 'Exactly one staged file tracked');
+  } finally {
+    fs.rmSync(tempStaged, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: staged-only extraction ignores unstaged files\n');
+
+  // Test 47: expanded typosquat corpus coverage
+  console.log('Test 47: expanded corpus coverage');
+  assert.ok(findTyposquatCandidate('cheer1o', 'npm', 10), 'cheerio variants must now be caught');
+  assert.ok(findTyposquatCandidate('requestz', 'npm', 10), 'request variants must be caught');
+  assert.ok(findTyposquatCandidate('sqlalchmey', 'pypi', 10), 'sqlalchemy transposition must be caught');
+  assert.ok(findTyposquatCandidate('pycrypt0dome', 'pypi', 10), 'pycryptodome lookalike must be caught');
+  console.log('  ✔ PASS: expanded corpus catches wider typosquat variants\n');
+
+  // Test 48: dashboard server boots, serves UI, and scans over HTTP
+  console.log('Test 48: dashboard UI server');
+  const { startDashboardServer } = await import('../src/server.js');
+  const dashboard = await startDashboardServer({ rootDir: path.resolve('test') });
+  try {
+    const html = await fetch(`${dashboard.url}/`).then(r => {
+      assert.equal(r.status, 200, 'Dashboard must be served at /');
+      return r.text();
+    });
+    assert.ok(html.includes('slop'), 'Dashboard HTML must contain the tool name');
+    assert.ok(html.includes('/api/scan'), 'Dashboard must be wired to the scan API');
+
+    const scanRes = await fetch(`${dashboard.url}/api/scan?dir=.`);
+    const scanData = await scanRes.json();
+    assert.ok(scanData.stats && typeof scanData.stats.total === 'number', 'Scan API must return stats');
+    assert.ok(scanData.stats.critical >= 5, 'Fixture directory must yield its hallucinated packages over the API');
+
+    const sarifRes = await fetch(`${dashboard.url}/api/scan?dir=.&format=sarif`);
+    const sarifData = await sarifRes.json();
+    assert.equal(sarifData.sarif.version, '2.1.0', 'SARIF format must be served over the API');
+  } finally {
+    await dashboard.close();
+  }
+  console.log('  ✔ PASS: dashboard serves UI, JSON scan and SARIF endpoints on localhost\n');
+
+  // Test 49: persistent cache roundtrip with TTL semantics
+  console.log('Test 49: persistent cache layer');
+  const { cacheSet, cacheGet } = await import('../src/registries/cache.js');
+  await cacheSet('test:roundtrip', { name: 'x', risk: 'CLEAN', status: 'VERIFIED' }, 1000);
+  assert.equal((await cacheGet('test:roundtrip', 2000))?.status, 'VERIFIED', 'Fresh entry must be readable');
+  assert.equal(await cacheGet('test:roundtrip', 1000 + 25 * 60 * 60 * 1000), null, 'EXISTS entries must expire after 24h');
+  await cacheSet('test:squat', { name: 'y', risk: 'CRITICAL', status: 'HALLUCINATED' }, 1000);
+  assert.equal((await cacheGet('test:squat', 1000 + 3 * 60 * 60 * 1000))?.status, 'HALLUCINATED', 'Within 6h the hallucination verdict replays');
+  assert.equal(await cacheGet('test:squat', 1000 + 7 * 60 * 60 * 1000), null, 'HALLUCINATED entries must expire after 6h (names can get registered as traps)');
+  console.log('  ✔ PASS: persistent cache TTL semantics verified\n');
+
+  // Test 50: offline mode replays cache, never fakes verdicts
+  console.log('Test 50: offline mode');
+  {
+    const tempOffline = path.resolve('test_temp_offline');
+    fs.mkdirSync(tempOffline, { recursive: true });
+    fs.writeFileSync(path.join(tempOffline, 'app.js'), "import _ from 'snowballstemmer';\nimport z from 'fake-offline-never-seen-xyz';\n");
+    try {
+      await checkNpmPackage('snowballstemmer'); // seed cache online (non-corpus real package)
+      const offlineResult = await scanDirectory(tempOffline, { offline: true });
+      const byName = Object.fromEntries(offlineResult.findings.map(f => [f.name, f]));
+      assert.equal(byName.snowballstemmer?.status, 'VERIFIED', 'Cached package must replay verdict offline');
+      assert.equal(byName.snowballstemmer?.cached, true, 'Replayed result must be marked cached');
+      assert.equal(byName['fake-offline-never-seen-xyz']?.status, 'UNKNOWN', 'Uncached package must be UNKNOWN offline');
+      assert.equal(byName['fake-offline-never-seen-xyz']?.risk, 'WARN', 'Offline unknowns must not fake CRITICAL');
+    } finally {
+      fs.rmSync(tempOffline, { recursive: true, force: true });
+    }
+  }
+  console.log('  ✔ PASS: offline mode replays cache, marks unknowns honestly\n');
+
+  // Test 51: .slopdepsrc.json extensibility
+  console.log('Test 51: .slopdepsrc.json project config');
+  {
+    const tempRc = path.resolve('test_temp_rc');
+    fs.mkdirSync(tempRc, { recursive: true });
+    fs.writeFileSync(path.join(tempRc, '.slopdepsrc.json'), JSON.stringify({
+      builtins: { npm: ['acme-internal-sdk'] },
+      popular: { npm: ['acme-enterprise-suite'] },
+      map: { my_custom_import: 'my-custom-dist' }
+    }));
+    fs.writeFileSync(path.join(tempRc, 'app.js'), "import sdk from 'acme-internal-sdk';\nimport s from 'acme-enterprise-su1te';\n");
+    fs.writeFileSync(path.join(tempRc, 'mod.py'), 'import my_custom_import\n');
+    try {
+      const rcResult = await scanDirectory(tempRc);
+      const names = rcResult.findings.map(f => f.name);
+      assert.ok(!names.includes('acme-internal-sdk'), 'rc builtins must suppress internal packages');
+      assert.ok(names.includes('acme-enterprise-su1te'), 'rc popular entries must feed the typosquat corpus');
+      const mapped = rcResult.findings.find(f => f.name === 'my_custom_import');
+      assert.equal(mapped?.resolvedDist, 'my-custom-dist', 'rc import map must resolve custom import to custom dist');
+    } finally {
+      fs.rmSync(tempRc, { recursive: true, force: true });
+    }
+  }
+  console.log('  ✔ PASS: rc config extends builtins, corpus and import map\n');
+
+  // Test 52: generated corpus merged at scale, no self-collisions
+  console.log('Test 52: generated corpus merge');
+  {
+    const { corpusSize } = await import('../src/typosquat.js');
+    assert.ok(corpusSize('npm') > 2000, `npm corpus must exceed 2000 entries after generated merge (got ${corpusSize('npm')})`);
+    assert.ok(corpusSize('pypi') > 1000, `pypi corpus must exceed 1000 entries after generated merge (got ${corpusSize('pypi')})`);
+    assert.equal(findTyposquatCandidate('react', 'npm', 10), null, 'Corpus members stay immune at scale');
+    assert.equal(findTyposquatCandidate('experss', 'npm', 10)?.canonical, 'express', 'Generated-corpus entries must catch squats');
+  }
+  console.log('  ✔ PASS: generated corpus merged, immunity intact, squats caught\n');
+
+  // Test 53: privacy mode corpus-prefill - popular deps verified with zero network
+  console.log('Test 53: privacy mode corpus prefill');
+  {
+    const tempPrivacy = path.resolve('test_temp_privacy');
+    fs.mkdirSync(tempPrivacy, { recursive: true });
+    fs.writeFileSync(path.join(tempPrivacy, 'app.js'), "import _ from 'react';\nimport z from 'fake-privacy-never-seen-xyz';\n");
+    try {
+      const privacyResult = await scanDirectory(tempPrivacy, { offline: true });
+      const byName = Object.fromEntries(privacyResult.findings.map(f => [f.name, f]));
+      assert.equal(byName.react?.status, 'VERIFIED', 'Corpus member must verify offline');
+      assert.equal(byName.react?.verifiedVia, 'corpus', 'Popular packages must be verified via bundled corpus');
+      assert.equal(byName.react?.risk, 'CLEAN', 'Corpus verification is a clean verdict');
+      assert.equal(byName['fake-privacy-never-seen-xyz']?.status, 'UNKNOWN', 'Unknowns stay honestly UNKNOWN');
+    } finally {
+      fs.rmSync(tempPrivacy, { recursive: true, force: true });
+    }
+  }
+  console.log('  ✔ PASS: privacy mode verifies popular deps offline, never fakes verdicts\n');
+
+  // Test 54: --clear-cache wipes the local cache file
+  console.log('Test 54: --clear-cache command');
+  {
+    const { cacheSet, cacheFlush } = await import('../src/registries/cache.js');
+    await cacheSet('test:clear', { name: 'q', risk: 'CLEAN', status: 'VERIFIED' });
+    await cacheFlush();
+    const clearRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--clear-cache'], { encoding: 'utf-8' });
+    assert.equal(clearRun.status, 0, '--clear-cache must exit 0');
+    assert.ok(clearRun.stdout.includes('Cache wiped'), '--clear-cache must report the wipe');
+    const { cachePath } = await import('../src/registries/cache.js');
+    assert.ok(!fs.existsSync(cachePath()), 'Cache file must be gone after wipe');
+  }
+  console.log('  ✔ PASS: --clear-cache wipes local verdict cache\n');
+
+  // Test 55: Rust ecosystem - use extraction, Cargo.toml, local paths, live crates.io
+  console.log('Test 55: Rust ecosystem support');
+  const { extractRustUses } = await import('../src/extractors/rust.js');
+  const { extractCargoToml } = await import('../src/extractors/manifests.js');
+  const rustSrc = [
+    'use serde::{Deserialize, Serialize};',
+    'use tokio::time::Duration;',
+    'extern crate rand;',
+    'use crate::models::User;',
+    'use self::helpers::foo;',
+    'use std::collections::HashMap;'
+  ].join('\n');
+  const uses = extractRustUses(rustSrc, 'main.rs').map(u => u.name);
+  assert.ok(uses.includes('serde') && uses.includes('tokio') && uses.includes('rand'), 'Registry crates must be extracted');
+  assert.ok(!uses.includes('crate') && !uses.includes('self'), 'Local use paths must be skipped');
+  assert.ok(!uses.includes('std'), 'std must be left to builtins filter');
+
+  const cargoToml = [
+    '[package]',
+    'name = "demo-rs"',
+    '',
+    '[dependencies]',
+    'serde = { version = "1.0", features = ["derive"] }',
+    'local-helper = { path = "../local-helper" }',
+    'git-dep = { git = "https://github.com/x/y" }',
+    'tokio = "1.0"',
+    '',
+    '[dev-dependencies]',
+    'criterion = "0.5"',
+    '',
+    '[dependencies.serde_derive]',
+    'version = "1.0"'
+  ].join('\n');
+  const cargoDeps = extractCargoToml(cargoToml, 'Cargo.toml').map(d => d.name);
+  assert.ok(cargoDeps.includes('serde') && cargoDeps.includes('tokio'), 'Dependency names must be extracted');
+  assert.ok(!cargoDeps.includes('local-helper'), 'Path dependencies must be skipped');
+  assert.ok(!cargoDeps.includes('git-dep'), 'Git dependencies must be skipped');
+  assert.ok(cargoDeps.includes('criterion'), 'Dev dependencies must be extracted');
+  assert.ok(cargoDeps.includes('serde_derive'), 'Inline sub-table dependencies must be extracted');
+  assert.ok(!cargoDeps.includes('demo-rs'), 'Own package name must not be a dependency');
+
+  const { checkRustPackage } = await import('../src/registries/rust.js');
+  const serdeCheck = await checkRustPackage('serde');
+  assert.equal(serdeCheck.risk, 'CLEAN', 'serde must verify clean on crates.io');
+  const fakeCrate = await checkRustPackage('serde-magic-hallucinated-xyz-404');
+  assert.equal(fakeCrate.status, 'HALLUCINATED', 'Fake crate must be caught');
+  console.log('  ✔ PASS: Rust sources, Cargo.toml and live crates.io verification\n');
+
+  // Test 56: BYOK AI fix mode with a mock provider
+  console.log('Test 56: BYOK AI fix mode');
+  {
+    const { buildUserPrompt, parseFixes } = await import('../src/fixer.js');
+    const { applyFixes } = await import('../src/fixer.js');
+
+    const tempFix = path.resolve('test_temp_fix');
+    fs.mkdirSync(tempFix, { recursive: true });
+    const appPath = path.join(tempFix, 'app.js');
+    fs.writeFileSync(appPath, "import _ from 'lodaeh';\nimport r from 'react';\n");
+    const fixes = parseFixes('```json\n[{"file":"app.js","line":1,"old":"import _ from \'lodaeh\';","new":"import _ from \'lodash\';"}]\n```');
+    const results = await applyFixes(tempFix, fixes);
+    assert.equal(results.filter(r => r.applied).length, 1, 'The flagged line must be fixed');
+    const after = fs.readFileSync(appPath, 'utf-8');
+    assert.ok(after.includes("from 'lodash'"), 'File must contain the corrected import');
+    assert.ok(after.includes("from 'react'"), 'Untouched lines must stay intact');
+    assert.ok(fs.existsSync(appPath + '.slop-deps.bak'), 'A .slop-deps.bak backup must be created');
+    fs.rmSync(tempFix, { recursive: true, force: true });
+
+    const prompt = buildUserPrompt('proj', [{ file: 'a.js', line: 1, ecosystem: 'npm', name: 'lodaeh', raw: "import _ from 'lodaeh'", message: 'does not exist' }]);
+    assert.ok(prompt.includes('lodaeh') && prompt.includes('JSON'), 'Prompt must carry findings and demand JSON');
+    const noOp = parseFixes('[]');
+    assert.equal(noOp.length, 0, 'Empty fix arrays must parse cleanly');
+  }
+  console.log('  ✔ PASS: fixer parses AI output, patches exact lines, keeps backups\n');
+
+  // Test 57: --fix without a key fails closed with guidance
+  console.log('Test 57: --fix BYOK gating');
+  {
+    const fixRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--fix', '--dir', 'src'], {
+      encoding: 'utf-8',
+      env: { ...process.env, SLOP_AI_KEY: '', OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' }
+    });
+    assert.equal(fixRun.status, 2, '--fix without BYOK key must exit 2');
+    assert.ok(fixRun.stderr.includes('BYOK'), 'Error must explain the BYOK requirement');
+  }
+  console.log('  ✔ PASS: --fix fails closed without a key, never silently skips\n');
 
   console.log('🎉 All test assertions passed successfully!');
 }

@@ -1,6 +1,6 @@
 {
   "name": "slop-deps",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "description": "Zero-dependency security scanner that catches AI-hallucinated and typosquatted dependencies before attackers weaponize them.",
   "main": "src/index.js",
   "type": "module",
@@ -13,6 +13,8 @@
   "keywords": [
     "ai",
     "hallucination",
+    "slopsquatting",
+    "typosquatting",
     "security",
     "supply-chain",
     "dependencies",
@@ -27,7 +29,10 @@
   "files": [
     "bin",
     "src",
+    "web/dashboard.html",
     "README.md",
+    "PRIVACY.md",
+    "LICENSE",
     "package.json"
   ],
   "repository": {

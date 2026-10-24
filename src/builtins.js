@@ -47,19 +47,40 @@ export const PYTHON_BUILTINS = new Set([
   'pip', 'setuptools', 'antigravity',
   'bmesh', 'bpy', 'mathutils', 'gpu', 'aud', 'sidecar_sdk',
   'and', 'or', 'in', 'not', 'python_version', 'platform_system', 'os_name',
-  '__future__', '__main__'
+  '__future__', '__main__', 'nt'
 ]);
+
+export const RUST_BUILTINS = new Set([
+  'std', 'core', 'alloc', 'proc_macro', 'test', 'bench', 'rustc_std_workspace_core',
+  'proc_macro2', 'quote', 'syn' // build-time universals pulled via macros, not Cargo lines
+]);
+
+const EXTRA_BUILTINS = { npm: new Set(), pypi: new Set(), cargo: new Set() };
+
+// Runtime extension for .slopdepsrc.json (private toolchains, internal SDKs)
+export function extendBuiltins(ecosystem, names) {
+  if (!EXTRA_BUILTINS[ecosystem] || !Array.isArray(names)) return;
+  for (const name of names) {
+    if (typeof name === 'string' && name.trim()) {
+      EXTRA_BUILTINS[ecosystem].add(name.trim().toLowerCase());
+    }
+  }
+}
 
 export function isBuiltin(pkgName, ecosystem) {
   if (ecosystem === 'npm') {
     const clean = pkgName.startsWith('node:') ? pkgName.slice(5) : pkgName;
-    return NODE_BUILTINS.has(clean);
+    return NODE_BUILTINS.has(clean) || EXTRA_BUILTINS.npm.has(clean.toLowerCase());
   }
   if (ecosystem === 'pypi') {
     const lower = pkgName.toLowerCase();
     // All _-prefixed names are C-level stdlib internals (_thread, _collections_abc, etc.)
     if (lower.startsWith('_')) return true;
-    return PYTHON_BUILTINS.has(lower);
+    return PYTHON_BUILTINS.has(lower) || EXTRA_BUILTINS.pypi.has(lower);
+  }
+  if (ecosystem === 'cargo') {
+    const lower = pkgName.toLowerCase();
+    return RUST_BUILTINS.has(lower) || EXTRA_BUILTINS.cargo.has(lower);
   }
   return false;
 }
