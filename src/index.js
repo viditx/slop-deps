@@ -38,12 +38,12 @@ async function mapConcurrent(items, limit, fn) {
   return results;
 }
 
-async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir = dir) {
+async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir = dir, errors = []) {
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    // Gracefully skip unreadable or protected directories (EPERM, EACCES, ENOENT, etc.)
+  } catch (err) {
+    errors.push({ path: dir, message: err.message });
     return fileList;
   }
 
@@ -65,7 +65,8 @@ async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir 
       } else if (entry.isFile()) {
         fileList.push(fullPath);
       }
-    } catch {
+    } catch (err) {
+      errors.push({ path: fullPath, message: err.message });
       continue;
     }
   }
@@ -146,10 +147,13 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   // staged mode: only content-read files present in this set (forward-slash absolute paths)
   const stagedFilter = options.stagedFiles || null;
 
-  await loadRcConfig(targetDir);
+  if (options.allowConfig !== false) {
+    await loadRcConfig(targetDir);
+  }
 
   const dirNames = new Set();
-  const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir);
+  const traversalErrors = [];
+  const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir, traversalErrors);
   const pathAliases = await loadPathAliases(targetDir);
 
   for (const file of allFiles) {
@@ -363,6 +367,15 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   }
 
   const targets = Array.from(uniqueTargets.values());
+  const scanWarnings = traversalErrors.map((error) => ({
+    name: error.path,
+    ecosystem: 'scanner',
+    file: path.relative(targetDir, error.path).replace(/\\/g, '/'),
+    status: 'SCAN_ERROR',
+    risk: 'WARN',
+    exists: null,
+    message: `Could not inspect path: ${error.message}`
+  }));
 
   // Offline / privacy mode: bundled corpus answers popular packages with zero
   // network, the persistent cache replays past verdicts, everything else is an
@@ -403,6 +416,8 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
           ...check
         };
       });
+
+  findings.push(...scanWarnings);
 
   if (!options.offline) {
     await cacheFlush();

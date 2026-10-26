@@ -43,6 +43,11 @@ export async function applyFixes(targetDir, fixes, { dryRun = false } = {}) {
 
   for (const [relFile, fileFixes] of byFile) {
     const abs = path.resolve(targetDir, relFile);
+    const relative = path.relative(path.resolve(targetDir), abs);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      for (const fx of fileFixes) results.push({ ...fx, applied: false, reason: 'file outside target directory' });
+      continue;
+    }
     let content;
     try {
       content = await fs.readFile(abs, 'utf-8');

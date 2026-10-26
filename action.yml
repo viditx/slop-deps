@@ -12,7 +12,7 @@ inputs:
   strict:
     description: 'Exit with code 2 on suspicious or unresolved findings (fail the job)'
     required: false
-    default: 'false'
+    default: 'true'
   sarif:
     description: 'Emit slop-deps.sarif and upload it as an artifact for GitHub code scanning'
     required: false
@@ -23,7 +23,20 @@ runs:
   steps:
     - name: Run slop-deps scan
       shell: bash
-      run: npx --yes slop-deps@latest --dir "${{ inputs.directory }}" ${{ inputs.strict == 'true' && '--strict' || '' }} ${{ inputs.sarif == 'true' && '--sarif > slop-deps.sarif' || '' }}
+      env:
+        SLOP_DEPS_DIRECTORY: ${{ inputs.directory }}
+        SLOP_DEPS_STRICT: ${{ inputs.strict }}
+        SLOP_DEPS_SARIF: ${{ inputs.sarif }}
+      run: |
+        set -- npx --yes slop-deps@1.4.0 --dir "$SLOP_DEPS_DIRECTORY"
+        if [ "$SLOP_DEPS_STRICT" = "true" ]; then
+          set -- "$@" --strict
+        fi
+        if [ "$SLOP_DEPS_SARIF" = "true" ]; then
+          "$@" --sarif > slop-deps.sarif
+        else
+          "$@"
+        fi
 
     - name: Upload SARIF artifact
       if: ${{ inputs.sarif == 'true' }}

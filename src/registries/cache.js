@@ -7,7 +7,10 @@ import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
 
-const CACHE_FILE = path.join(os.tmpdir(), 'slop-deps-cache.json');
+const CACHE_DIR = process.env.XDG_CACHE_HOME
+  || process.env.LOCALAPPDATA
+  || path.join(os.homedir(), '.cache');
+const CACHE_FILE = path.join(CACHE_DIR, 'slop-deps', 'cache.json');
 const TTL = {
   EXISTS_MS: 24 * 60 * 60 * 1000,
   HALLUCINATED_MS: 6 * 60 * 60 * 1000
@@ -27,6 +30,8 @@ async function load() {
   if (loader) return loader;
   loader = (async () => {
     try {
+      const stat = await fs.lstat(CACHE_FILE);
+      if (stat.isSymbolicLink()) throw new Error('cache path is a symbolic link');
       const raw = await fs.readFile(CACHE_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
       store = parsed && typeof parsed === 'object' ? parsed : {};
@@ -60,7 +65,14 @@ export async function cacheFlush() {
   if (!dirty || !store) return;
   dirty = false;
   try {
-    await fs.writeFile(CACHE_FILE, JSON.stringify(store), 'utf-8');
+    await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
+    try {
+      const stat = await fs.lstat(CACHE_FILE);
+      if (stat.isSymbolicLink()) throw new Error('cache path is a symbolic link');
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    await fs.writeFile(CACHE_FILE, JSON.stringify(store), { encoding: 'utf-8', mode: 0o600 });
   } catch {
     // read-only tmpdir or race with another process — in-memory cache still works
   }

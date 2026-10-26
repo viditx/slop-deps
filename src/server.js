@@ -40,7 +40,15 @@ export function startDashboardServer({ port = 0, rootDir = process.cwd(), open }
       }
       scanning = (async () => {
         const target = path.resolve(rootDir, dir);
-        const result = staged ? await scanStagedFiles(target) : await scanDirectory(target);
+        const relative = path.relative(rootDir, target);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          const error = new Error('Scan directory must remain inside the dashboard root.');
+          error.code = 'EACCESS';
+          throw error;
+        }
+        const result = staged
+          ? await scanStagedFiles(target, { allowConfig: false })
+          : await scanDirectory(target, { allowConfig: false });
         if (format === 'sarif') return { sarif: toSarif(result.findings) };
         return result;
       })()

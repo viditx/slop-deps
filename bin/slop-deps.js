@@ -26,6 +26,7 @@ OPTIONS:
   --staged            Scan only files staged in git (pre-commit mode)
   --offline           Privacy mode — bundled corpus + local cache only, zero network
   --private           Alias for --offline
+  --trust-config      Load repository .slopdepsrc.json configuration
   --clear-cache       Wipe the local verdict cache and exit
   --update-corpus     Refresh the auto-generated typosquat corpus from live registries
   --ui [port]         Launch the local dashboard UI (binds 127.0.0.1 only)
@@ -72,7 +73,7 @@ for (let i = 0; i < args.length; i++) {
     targetDir = path.resolve(process.cwd(), arg.slice(6));
   } else if (arg.startsWith('-d=')) {
     targetDir = path.resolve(process.cwd(), arg.slice(3));
-  } else if (['--json', '--strict', '--sarif', '--staged', '--offline', '--private', '--clear-cache', '--update-corpus', '--fix', '--ui'].includes(arg)) {
+  } else if (['--json', '--strict', '--sarif', '--staged', '--offline', '--private', '--trust-config', '--clear-cache', '--update-corpus', '--fix', '--ui'].includes(arg)) {
     // Valid flags
   } else if (!arg.startsWith('-')) {
     targetDir = path.resolve(process.cwd(), arg);
@@ -120,8 +121,8 @@ async function run() {
   let result;
   try {
     result = isStaged
-      ? await scanStagedFiles(targetDir)
-      : await scanDirectory(targetDir, { offline: isOffline });
+      ? await scanStagedFiles(targetDir, { offline: isOffline, allowConfig: args.includes('--trust-config') })
+      : await scanDirectory(targetDir, { offline: isOffline, allowConfig: args.includes('--trust-config') });
   } catch (err) {
     if (!isJson && !isSarif) {
       process.stdout.write('\x1b[2K\r');
