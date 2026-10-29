@@ -920,7 +920,9 @@ async function run() {
     const appPath = path.join(tempFix, 'app.js');
     fs.writeFileSync(appPath, "import _ from 'lodaeh';\nimport r from 'react';\n");
     const fixes = parseFixes('```json\n[{"file":"app.js","line":1,"old":"import _ from \'lodaeh\';","new":"import _ from \'lodash\';"}]\n```');
-    const results = await applyFixes(tempFix, fixes);
+    const results = await applyFixes(tempFix, fixes, {
+      findings: [{ file: 'app.js', line: 1, raw: 'lodaeh' }]
+    });
     assert.equal(results.filter(r => r.applied).length, 1, 'The flagged line must be fixed');
     const after = fs.readFileSync(appPath, 'utf-8');
     assert.ok(after.includes("from 'lodash'"), 'File must contain the corrected import');

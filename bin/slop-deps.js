@@ -171,7 +171,7 @@ Tip: point SLOP_AI_BASE_URL at http://127.0.0.1:11434/v1 (Ollama) to keep fixes 
       console.error(`\x1b[31m✖ AI fix failed:\x1b[0m ${err.message}\n`);
       process.exit(2);
     }
-    const applied = await applyFixes(targetDir, fixes);
+    const applied = await applyFixes(targetDir, fixes, { findings: fixable });
     let changed = 0;
     for (const r of applied.filter(x => x.applied)) {
       changed++;
