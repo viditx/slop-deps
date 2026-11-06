@@ -8,8 +8,6 @@ AI models (Claude, Cursor, Copilot, ChatGPT) confidently invent package names th
 
 `slop-deps` statically extracts every package import from source code and manifests, verifying each one directly against upstream registries before it ever enters a lockfile. Zero runtime dependencies. Sub-second execution.
 
-**Proof it works:** In a controlled A/B evaluation across real AI-generated code, standard package managers accepted 100% of hallucinated imports silently. `slop-deps` caught 6/6 (100%) in <20ms. Full benchmark breakdown in [`docs/eval-report.html`](docs/eval-report.html).
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
@@ -107,10 +105,8 @@ slop-deps/
 │   └── registries/         ← npm, PyPI, Crates.io probes & TTL cache
 ├── installer.iss           ← Inno Setup 6 interactive installer script
 ├── demo/                   ← test fixtures with intentional hallucinations
-├── test/
-│   └── run-tests.js        ← 61 deterministic assertion suites
-└── docs/
-    └── eval-report.html    ← interactive A/B benchmark evaluation report
+└── test/
+    └── run-tests.js        ← 61 deterministic assertion suites
 ```
 
 ---
