@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "slop-deps": "bin/slop-deps.js"
+    "slop-deps": "bin/slop-deps.js",
+    "slopdeps": "bin/slop-deps.js"
   },
   "scripts": {
     "test": "node test/run-tests.js"
@@ -29,7 +30,6 @@
   "files": [
     "bin",
     "src",
-    "web/dashboard.html",
     "README.md",
     "PRIVACY.md",
     "LICENSE",

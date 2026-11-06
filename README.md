@@ -1,26 +1,14 @@
 # slop-deps
 
-> Your AI invents package names that don't exist. Attackers register those names and wait for someone to install them. This catches it — before it reaches your lockfile.
+> Catches package names invented by AI code tools before they reach your lockfile.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
-```
-   ███████╗██╗      ██████╗ ██████╗       ██████╗ ███████╗██████╗ ███████╗
-   ██╔════╝██║     ██╔═══██╗██╔══██╗      ██╔══██╗██╔════╝██╔══██╗██╔════╝
-   ███████╗██║     ██║   ██║██████╔╝█████╗██║  ██║█████╗  ██████╔╝███████╗
-   ╚════██║██║     ██║   ██║██╔═══╝ ╚════╝██║  ██║██╔══╝  ██╔═══╝ ╚════██║
-   ███████║███████╗╚██████╔╝██║           ██████╔╝███████╗██║     ███████║
-   ╚══════╝╚══════╝ ╚═════╝ ╚═╝           ╚═════╝ ╚══════╝╚═╝     ╚══════╝
-   AI Dependency Hallucination & Supply-Chain Sentinel • v1.4.0
-```
+Cursor, Copilot, and Claude suggest package names that **don't exist** in 5-21% of cases. Attackers register those exact phantom names with malware, waiting for someone to install them (slopsquatting).
 
-Straight talk, no filler:
-
-Cursor/Copilot/Claude suggest package names that **don't exist** in 5–21% of cases. And those names repeat — about 43% of hallucinated names show up again across runs, per [Cloud Security Alliance research](https://labs.cloudsecurityalliance.org/research/csa-research-note-slopsquatting-ai-supply-chain-20260419-csa). That makes it easy money for attackers: grab the same phantom names, register them on npm, stuff malware inside, wait. It's called **slopsquatting**, and it's not theoretical — names like `react-codeshift` have already been claimed.
-
-slop-deps is the direct answer: **one command, zero setup, every import checked** — in source code, in manifests, across three ecosystems (npm / PyPI / crates.io).
+`slop-deps` verifies every imported package in source code and manifests against live package registries (npm, PyPI, crates.io). Zero setup, zero dependencies.
 
 ---
 
@@ -80,13 +68,13 @@ Neither exists on npm. The attacker workflow:
 * **Zero Dependencies:** Built entirely on Node.js 18+ native APIs (`fetch`, `fs/promises`). A supply-chain auditor that depends on nobody — that's the whole point.
 * **Typosquat Engine:** Damerau-Levenshtein matching with confusable-character normalization (`m0rgan` → `morgan`, `reqeusts` → `requests`) against a bundled corpus — **fully offline, zero network**. A new package one edit away from a giant gets flagged; established ones only get a heads-up.
 * **Install-Script Signal:** Young packages shipping `preinstall`/`install`/`postinstall` scripts — the classic npm malware pattern — are escalated to SUSPICIOUS automatically.
-* **File-Level AST Parsing:** Imports are scanned from source (`.js`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.py`, `.pyi`) before they ever reach a manifest.
+* **Static Import Extraction:** Imports are extracted directly from source (`.js`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.py`, `.pyi`) before they ever reach a manifest.
 * **Manifest Coverage:** `package.json` (incl. `bundledDependencies`), `requirements*.txt`, `constraints.txt`, `pyproject.toml`, `setup.cfg`, `Pipfile`, `setup.py`.
 * **Monorepo Aware:** Internal workspace packages (`workspace:*`, `file:`, `link:`) are detected and ignored — Turborepo, Nx, pnpm.
 * **Rust / Cargo Support:** `use` paths and `extern crate` in `.rs` sources, `Cargo.toml` manifests, live crates.io verification (with hyphen/underscore name variants — the Rust quirk).
 * **Smart Namespace Mapping:** Python import→distribution aliases (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`) and PEP 420 namespaces (`google.cloud.*`, `azure.*`, `opentelemetry.*`).
 * **Noise Filtering:** stdlib built-ins, framework aliases (`$lib`, `@@/`), `tsconfig.json` path mappings — all ignored. Signal, not noise.
-* **Fail-Closed Exit Codes:** `exit 1` on criticals, `exit 2` on missing dirs/network errors, `exit 0` on clean. Plug into CI and forget.
+* **Deterministic CI Exit Codes:** `exit 1` on critical hallucinated packages, `exit 2` on missing dirs or in `--strict` mode for warnings and unreadable files, `exit 0` on clean. Plug into CI and forget.
 
 ---
 
@@ -126,6 +114,15 @@ slop-deps --strict
 # options
 slop-deps --help
 ```
+
+## Security
+
+Designed from the ground up for strict supply-chain and CI/CD security:
+
+- **Zero Network Listeners** — Pure headless architecture. The CLI never opens background sockets, HTTP servers, or telemetry pipes. It cannot be probed, crashed, or rebound remotely.
+- **Fail-Closed Pipeline** — Any unreadable file, network timeout in `--strict` mode, or invalid argument exits with code 2. Critical hallucinated packages exit with code 1.
+- **Opt-In Repository Config** (`--trust-config`) — A repository under scan cannot mark its own typosquats as builtins or popular packages to evade detection unless explicitly trusted.
+- **Injection-Guarded AI Fixer** (`--fix`) — When using BYOK AI repair, models are strictly constrained to rewriting only the module specifier. Injected statements, subshells, or payload appendings are rejected outright, leaving files untouched.
 
 ## Privacy
 
@@ -200,7 +197,7 @@ jobs:
 
 > If it looks like too much, it's fake.
 
-The scanner holds itself to the standard it audits in others: zero dependencies, zero install scripts, zero telemetry, read-only filesystem. Every claim in [PRIVACY.md](PRIVACY.md) comes with the grep command to verify it.
+The scanner holds itself to the standard it audits in others: zero dependencies, zero install scripts, zero telemetry, zero background sockets, and zero unsolicited file writes. Every claim in [PRIVACY.md](PRIVACY.md) comes with the grep command to verify it.
 
 ---
 

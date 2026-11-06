@@ -1,0 +1,298 @@
+@import "tailwindcss";
+
+/* Self-hosted fonts (I-2): no Google Fonts CDN call, works fully offline.
+   JetBrains Mono file is a variable font (wght 400-800) instanced per weight. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-var.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/silkscreen-latin-400.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/silkscreen-latin-700.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@layer utilities {
+  .font-terminal {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 800;
+  }
+
+  .font-pixel {
+    font-family: 'Silkscreen', 'JetBrains Mono', monospace;
+    font-smooth: never;
+    -webkit-font-smoothing: none;
+    letter-spacing: 0.04em;
+  }
+
+  /* 16-bit Stepped Pixel Pill Polygon (notched 2-step pixel corners instead of smooth border-radius) */
+  .pixel-pill-clip {
+    clip-path: polygon(
+      0px 6px,
+      3px 6px,
+      3px 3px,
+      6px 3px,
+      6px 0px,
+      calc(100% - 6px) 0px,
+      calc(100% - 6px) 3px,
+      calc(100% - 3px) 3px,
+      calc(100% - 3px) 6px,
+      100% 6px,
+      100% calc(100% - 6px),
+      calc(100% - 3px) calc(100% - 6px),
+      calc(100% - 3px) calc(100% - 3px),
+      calc(100% - 6px) calc(100% - 3px),
+      calc(100% - 6px) 100%,
+      6px 100%,
+      6px calc(100% - 3px),
+      3px calc(100% - 3px),
+      3px calc(100% - 6px),
+      0px calc(100% - 6px)
+    );
+  }
+
+  .pixel-card-clip {
+    clip-path: polygon(
+      0px 6px,
+      3px 6px,
+      3px 3px,
+      6px 3px,
+      6px 0px,
+      calc(100% - 6px) 0px,
+      calc(100% - 6px) 3px,
+      calc(100% - 3px) 3px,
+      calc(100% - 3px) 6px,
+      100% 6px,
+      100% calc(100% - 6px),
+      calc(100% - 3px) calc(100% - 6px),
+      calc(100% - 3px) calc(100% - 3px),
+      calc(100% - 6px) calc(100% - 3px),
+      calc(100% - 6px) 100%,
+      6px 100%,
+      6px calc(100% - 3px),
+      3px calc(100% - 3px),
+      3px calc(100% - 6px),
+      0px calc(100% - 6px)
+    );
+  }
+
+  /* Hardware-accelerated 16-bit button micro-interaction (compositor-only transform + sheen sweep) */
+  .pixel-btn-anim {
+    position: relative;
+    overflow: hidden;
+    will-change: transform;
+    transition:
+      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 150ms ease;
+  }
+
+  .pixel-btn-anim:hover {
+    transform: translate3d(0, -2px, 0) scale(1.03);
+  }
+
+  .pixel-btn-anim:active {
+    transform: translate3d(0, 1.5px, 0) scale(0.97);
+    transition-duration: 75ms;
+  }
+
+  .pixel-btn-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pixel-btn-sheen::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -120%;
+    width: 65%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(245, 245, 240, 0.28),
+      transparent
+    );
+    transform: skewX(-20deg);
+    transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+
+  .pixel-btn-anim:hover .pixel-btn-sheen::after {
+    transform: translate3d(340%, 0, 0) skewX(-20deg);
+  }
+
+  .pixel-btn-sheen-dark {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pixel-btn-sheen-dark::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -120%;
+    width: 65%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(4, 5, 7, 0.18),
+      transparent
+    );
+    transform: skewX(-20deg);
+    transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+
+  .pixel-btn-anim:hover .pixel-btn-sheen-dark::after {
+    transform: translate3d(340%, 0, 0) skewX(-20deg);
+  }
+
+  /* Smooth GPU-friendly grid accordion for opening and closing context drawers */
+  .context-drawer-grid {
+    display: grid;
+    transition:
+      grid-template-rows 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 190ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .context-drawer-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  .context-drawer-closed {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* Opening & Closing Context Popover Animations (GPU compositor transform + opacity only) */
+@keyframes context-open-center {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0) scale3d(0.91, 0.86, 1);
+  }
+  70% {
+    opacity: 1;
+    transform: translate3d(0, 1.5px, 0) scale3d(1.01, 1.01, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+  }
+}
+
+@keyframes context-close-center {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -10px, 0) scale3d(0.92, 0.87, 1);
+  }
+}
+
+@keyframes context-open-right {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0) scale3d(0.91, 0.86, 1);
+  }
+  70% {
+    opacity: 1;
+    transform: translate3d(0, 1.5px, 0) scale3d(1.01, 1.01, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+  }
+}
+
+@keyframes context-close-right {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -10px, 0) scale3d(0.92, 0.87, 1);
+  }
+}
+
+@keyframes context-item-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes context-item-out {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-8px, 0, 0) scale3d(0.96, 0.92, 1);
+  }
+}
+
+.animate-context-open-center {
+  transform-origin: top center;
+  will-change: transform, opacity;
+  animation: context-open-center 230ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-context-close-center {
+  transform-origin: top center;
+  will-change: transform, opacity;
+  pointer-events: none;
+  animation: context-close-center 175ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.animate-context-open-right {
+  transform-origin: top right;
+  will-change: transform, opacity;
+  animation: context-open-right 230ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-context-close-right {
+  transform-origin: top right;
+  will-change: transform, opacity;
+  pointer-events: none;
+  animation: context-close-right 175ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.animate-context-item-in {
+  will-change: transform, opacity;
+  animation: context-item-in 210ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-context-item-out {
+  will-change: transform, opacity;
+  pointer-events: none;
+  animation: context-item-out 165ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+

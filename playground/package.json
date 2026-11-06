@@ -1,0 +1,24 @@
+{
+  "name": "slop-deps-kitchen-sink-manifest",
+  "version": "1.0.0",
+  "description": "Multi-tier manifest test fixture for slop-deps",
+  "dependencies": {
+    "react": "^18.2.0",
+    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "lodash": "^4.17.21",
+    "express-auth-middleware-pro": "^1.0.0",
+    "local-workspace-pkg": "workspace:*",
+    "local-file-pkg": "file:../packages/core",
+    "direct-git-pkg": "git+https://github.com/viditx/slop-deps.git"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "react-super-fast-dom-optimizer": "^0.9.0",
+    "@types/node": "^20.10.0"
+  },
+  "optionalDependencies": {
+    "ax0s": "^1.0.0"
+  }
+}

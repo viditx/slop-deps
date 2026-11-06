@@ -18,8 +18,25 @@ const IGNORED_DIRS = new Set([
   'out', 'coverage', '.cache', 'env', '.env', 'venv', '.venv',
   '.tox', '.nox', '.pytest_cache', '.mypy_cache', '.ruff_cache',
   '.svelte-kit', '.astro', '.output', '.turbo', '.parcel-cache',
-  'site-packages', '__pycache__', '.idea', '.vscode'
+  'site-packages', '__pycache__', '.idea', '.vscode',
+  'appdata', 'application data', 'local settings', 'cookies',
+  'nethood', 'printhood', 'recent', 'sendto', 'start menu',
+  'templates', 'system volume information', '$recycle.bin',
+  'program files', 'program files (x86)', 'programdata', 'windows'
 ]);
+
+const SUPPORTED_EXTS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.pyi', '.rs']);
+const SUPPORTED_MANIFESTS = new Set([
+  'package.json', 'requirements.txt', 'pyproject.toml', 'setup.cfg',
+  'pipfile', 'setup.py', 'cargo.toml', 'constraints.txt',
+  'tsconfig.json', 'jsconfig.json'
+]);
+
+function isSupportedFile(filename) {
+  const lower = filename.toLowerCase();
+  if (SUPPORTED_MANIFESTS.has(lower) || (lower.startsWith('tsconfig.') && lower.endsWith('.json'))) return true;
+  return SUPPORTED_EXTS.has(path.extname(lower));
+}
 
 // Lightweight concurrent pool (zero external dependencies)
 async function mapConcurrent(items, limit, fn) {
@@ -48,22 +65,26 @@ async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir 
   }
 
   for (const entry of entries) {
-    if (IGNORED_DIRS.has(entry.name)) continue;
+    const lowerName = entry.name.toLowerCase();
+    if (IGNORED_DIRS.has(lowerName)) continue;
     const fullPath = path.join(dir, entry.name);
 
     try {
       if (entry.isDirectory()) {
+        if (entry.name.startsWith('.') && fullPath !== rootDir) continue;
         if (dirNames) {
           const rel = path.relative(rootDir, fullPath).replace(/\\/g, '/').toLowerCase();
           dirNames.add(rel);
           // Only direct top-level subdirectories of rootDir can be root packages
           if (path.dirname(fullPath) === rootDir) {
-            dirNames.add(entry.name.toLowerCase());
+            dirNames.add(lowerName);
           }
         }
-        await getFilesRecursively(fullPath, fileList, dirNames, rootDir);
+        await getFilesRecursively(fullPath, fileList, dirNames, rootDir, errors);
       } else if (entry.isFile()) {
-        fileList.push(fullPath);
+        if (isSupportedFile(entry.name)) {
+          fileList.push(fullPath);
+        }
       }
     } catch (err) {
       errors.push({ path: fullPath, message: err.message });
@@ -176,6 +197,18 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
 
   const packageReferences = [];
 
+  const safeReadFile = async (filePath) => {
+    try {
+      return await fs.readFile(filePath, 'utf-8');
+    } catch (err) {
+      traversalErrors.push({
+        file: path.relative(targetDir, filePath),
+        message: `Failed to read file: ${err.message}`
+      });
+      return null;
+    }
+  };
+
   for (const file of allFiles) {
     const ext = path.extname(file).toLowerCase();
     const basename = path.basename(file).toLowerCase();
@@ -183,50 +216,48 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
 
     // Manifests
     if (basename === 'package.json') {
+      const content = await safeReadFile(file);
+      if (content === null) continue;
       try {
-        const content = await fs.readFile(file, 'utf-8');
-        try {
-          const parsed = JSON.parse(content);
-          if (parsed.name && typeof parsed.name === 'string') {
-            localWorkspacePackages.add(parsed.name.toLowerCase());
-          }
-        } catch {}
-        if (!isStaged) continue;
-        const rel = path.relative(targetDir, file);
-        packageReferences.push(...extractPackageJson(content, rel));
+        const parsed = JSON.parse(content);
+        if (parsed.name && typeof parsed.name === 'string') {
+          localWorkspacePackages.add(parsed.name.toLowerCase());
+        }
       } catch {}
+      if (!isStaged) continue;
+      const rel = path.relative(targetDir, file);
+      packageReferences.push(...extractPackageJson(content, rel));
       continue;
     }
 
     if (basename === 'cargo.toml') {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
-        const nameMatch = content.match(/^\s*name\s*=\s*"([^"]+)"/m);
-        if (nameMatch) {
-          localWorkspacePackages.add(nameMatch[1].toLowerCase());
-          localWorkspacePackages.add(nameMatch[1].toLowerCase().replace(/-/g, '_'));
-        }
-        if (!isStaged) continue;
-        const rel = path.relative(targetDir, file);
-        packageReferences.push(...extractCargoToml(content, rel));
-      } catch {}
+      const content = await safeReadFile(file);
+      if (content === null) continue;
+      const nameMatch = content.match(/^\s*name\s*=\s*"([^"]+)"/m);
+      if (nameMatch) {
+        localWorkspacePackages.add(nameMatch[1].toLowerCase());
+        localWorkspacePackages.add(nameMatch[1].toLowerCase().replace(/-/g, '_'));
+      }
+      if (!isStaged) continue;
+      const rel = path.relative(targetDir, file);
+      packageReferences.push(...extractCargoToml(content, rel));
       continue;
     }
 
     if (!isStaged) continue;
 
     if (basename.endsWith('.txt') && (basename.includes('requirements') || basename.includes('reqs') || basename.includes('constraint'))) {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractRequirementsTxt(content, rel));
-      } catch {}
+      }
       continue;
     }
 
     if (basename === 'pyproject.toml') {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const nameMatch = content.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
         if (nameMatch) {
           localPyModules.add(nameMatch[1].toLowerCase().replace(/[-_]/g, '_'));
@@ -234,13 +265,13 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
         }
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractPyProjectToml(content, rel));
-      } catch {}
+      }
       continue;
     }
 
     if (basename === 'setup.cfg') {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const nameMatch = content.match(/^\s*name\s*=\s*(.+)$/m);
         if (nameMatch) {
           const cleanName = nameMatch[1].trim().toLowerCase();
@@ -249,22 +280,22 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
         }
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractSetupCfg(content, rel));
-      } catch {}
+      }
       continue;
     }
 
     if (basename === 'pipfile') {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractPipfile(content, rel));
-      } catch {}
+      }
       continue;
     }
 
     if (basename === 'setup.py') {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const nameMatch = content.match(/name\s*=\s*["']([^"']+)["']/);
         if (nameMatch) {
           const cleanName = nameMatch[1].trim().toLowerCase();
@@ -273,35 +304,35 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
         }
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractSetupPy(content, rel));
-      } catch {}
+      }
       continue;
     }
 
     // Source files (JS, TS, React, Vue, Svelte, Astro components)
     if (['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.vue', '.svelte', '.astro'].includes(ext)) {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractJsImports(content, rel));
-      } catch {}
+      }
       continue;
     }
 
     if (ext === '.py' || ext === '.pyi') {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractPythonImports(content, rel));
-      } catch {}
+      }
       continue;
     }
 
     if (ext === '.rs') {
-      try {
-        const content = await fs.readFile(file, 'utf-8');
+      const content = await safeReadFile(file);
+      if (content !== null) {
         const rel = path.relative(targetDir, file);
         packageReferences.push(...extractRustUses(content, rel));
-      } catch {}
+      }
       continue;
     }
   }

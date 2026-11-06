@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import path from 'path';
+import os from 'os';
 import { spawn } from 'child_process';
 import { scanDirectory, scanStagedFiles } from '../src/index.js';
 import { printBanner, printResults } from '../src/reporter.js';
 import { toSarif } from '../src/sarif.js';
-import { startDashboardServer } from '../src/server.js';
 import { updateCorpus } from '../src/update-corpus.js';
 
 const VERSION = '1.4.0';
@@ -16,7 +16,7 @@ const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-slop-deps — AI Dependency Hallucination & Supply-Chain Sentinel
+slop-deps: AI Dependency Hallucination & Supply-Chain Sentinel
 
 USAGE:
   npx slop-deps [options]
@@ -24,12 +24,12 @@ USAGE:
 OPTIONS:
   -d, --dir <path>    Specify directory to scan (default: current working directory)
   --staged            Scan only files staged in git (pre-commit mode)
-  --offline           Privacy mode — bundled corpus + local cache only, zero network
+  --offline           Privacy mode: bundled corpus + local cache only, zero network
   --private           Alias for --offline
   --trust-config      Load repository .slopdepsrc.json configuration
   --clear-cache       Wipe the local verdict cache and exit
   --update-corpus     Refresh the auto-generated typosquat corpus from live registries
-  --ui [port]         Launch the local dashboard UI (binds 127.0.0.1 only)
+  --fix               Attempt BYOK AI-assisted import repair with .slop-deps.bak backups
   --json              Output findings as raw JSON (ideal for CI/CD pipelines)
   --sarif             Output SARIF 2.1.0 for GitHub code scanning
   --strict            Exit with code 2 if suspicious packages, network errors, or warnings occur
@@ -58,6 +58,7 @@ const isClearCache = args.includes('--clear-cache');
 const isUpdateCorpus = args.includes('--update-corpus');
 const isFix = args.includes('--fix');
 const uiIndex = args.findIndex(a => a === '--ui');
+let explicitDir = false;
 let targetDir = process.cwd();
 
 for (let i = 0; i < args.length; i++) {
@@ -65,18 +66,22 @@ for (let i = 0; i < args.length; i++) {
   if (arg === '--dir' || arg === '-d') {
     if (args[i + 1] && !args[i + 1].startsWith('-')) {
       targetDir = path.resolve(process.cwd(), args[++i]);
+      explicitDir = true;
     } else {
       console.error(`\x1b[31m✖ ERROR:\x1b[0m Option '${arg}' requires a directory path.\n`);
       process.exit(2);
     }
   } else if (arg.startsWith('--dir=')) {
     targetDir = path.resolve(process.cwd(), arg.slice(6));
+    explicitDir = true;
   } else if (arg.startsWith('-d=')) {
     targetDir = path.resolve(process.cwd(), arg.slice(3));
-  } else if (['--json', '--strict', '--sarif', '--staged', '--offline', '--private', '--trust-config', '--clear-cache', '--update-corpus', '--fix', '--ui'].includes(arg)) {
+    explicitDir = true;
+  } else if (['--json', '--strict', '--sarif', '--staged', '--offline', '--private', '--trust-config', '--clear-cache', '--update-corpus', '--fix'].includes(arg)) {
     // Valid flags
   } else if (!arg.startsWith('-')) {
     targetDir = path.resolve(process.cwd(), arg);
+    explicitDir = true;
   } else if (arg.startsWith('-')) {
     console.error(`\x1b[31m✖ ERROR:\x1b[0m Unrecognized option: '${arg}'. Run 'slop-deps --help' for usage.\n`);
     process.exit(2);
@@ -99,23 +104,24 @@ async function run() {
     process.exit(0);
   }
 
-  if (uiIndex !== -1) {
-    const portArg = args[uiIndex + 1];
-    const port = portArg && /^\d+$/.test(portArg) ? parseInt(portArg, 10) : 0;
-    const dashboard = await startDashboardServer({ port, rootDir: targetDir });
-    printBanner();
-    console.log(`  Dashboard live at: \x1b[36m\x1b[1m${dashboard.url}\x1b[0m  (Ctrl+C to stop)`);
-    const opener = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-    const openerArgs = process.platform === 'win32' ? ['/c', 'start', '', dashboard.url] : [dashboard.url];
-    try {
-      spawn(opener, openerArgs, { stdio: 'ignore', detached: true, windowsHide: true }).unref();
-    } catch {}
-    return;
-  }
-
   if (!isJson && !isSarif) {
     printBanner();
-    process.stdout.write(`  Scanning ${isStaged ? 'staged files' : 'directory'}: ${targetDir} ...`);
+    
+  }
+
+  const resolvedTarget = path.resolve(targetDir);
+  const homeDir = path.resolve(os.homedir());
+  const rootDir = path.parse(resolvedTarget).root;
+
+  if (!explicitDir && !isStaged && (resolvedTarget === homeDir || resolvedTarget === rootDir)) {
+    if (!isJson && !isSarif) {
+      console.log(`  Run slop-deps inside a project directory or pass a target path:
+    slopdeps <path-to-project>
+    slopdeps --help\n`);
+    } else if (isJson) {
+      console.log(JSON.stringify({ findings: [], stats: { total: 0, critical: 0, high: 0, warn: 0, clean: 0 }, message: 'Bare scan in user home/root directory skipped. Provide a project directory.' }, null, 2));
+    }
+    process.exit(0);
   }
 
   let result;
@@ -140,8 +146,7 @@ async function run() {
   } else if (isJson) {
     console.log(JSON.stringify({ findings, stats, ...(result.staged ? { staged: true, stagedFileCount: result.stagedFileCount } : {}) }, null, 2));
   } else {
-    // Clear scanning status line cleanly
-    process.stdout.write('\x1b[2K\r');
+    
     printResults(findings, stats);
   }
 
@@ -158,7 +163,7 @@ Tip: point SLOP_AI_BASE_URL at http://127.0.0.1:11434/v1 (Ollama) to keep fixes 
     }
     const fixable = findings.filter(f => (f.risk === 'CRITICAL' || f.risk === 'HIGH') && f.file && f.raw);
     if (fixable.length === 0) {
-      console.log('  \x1b[32m✔\x1b[0m Nothing to fix — no critical/suspicious import findings.\n');
+      console.log('  \x1b[32m✔\x1b[0m Nothing to fix : no critical/suspicious import findings.\n');
       process.exit(stats.critical > 0 ? 1 : 0);
     }
     console.log(`  AI fix via \x1b[36m${ai.baseUrl}\x1b[0m (model: ${ai.model})${ai.local ? ' \x1b[32m[local endpoint]\x1b[0m' : ''}`);
@@ -181,7 +186,10 @@ Tip: point SLOP_AI_BASE_URL at http://127.0.0.1:11434/v1 (Ollama) to keep fixes 
     }
     const skipped = applied.filter(x => !x.applied).length;
     if (changed > 0) console.log(`\n  ${changed} line(s) fixed. Backups: *.slop-deps.bak`);
-    if (skipped > 0) console.log(`  ${skipped} finding(s) left untouched (no safe suggestion).`);
+    if (skipped > 0) {
+      console.log(`  \x1b[33m•\x1b[0m ${skipped} finding(s) left untouched (no safe suggestion).\n`);
+      process.exit(1);
+    }
     console.log('');
     process.exit(0);
   }

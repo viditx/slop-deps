@@ -34,15 +34,15 @@ export async function checkRustPackage(pkgName) {
     return invalid;
   }
 
-  for (const key of nameVariants(clean)) {
-    const persisted = await cacheGet(`cargo:${key}`);
-    if (persisted) {
-      CACHE.set(pkgName, persisted);
-      return persisted;
-    }
-  }
-
   const promise = (async () => {
+    for (const key of nameVariants(clean)) {
+      const persisted = await cacheGet(`cargo:${key}`);
+      if (persisted) {
+        CACHE.set(pkgName, persisted);
+        return persisted;
+      }
+    }
+
     const variants = nameVariants(clean);
     let data = null;
     let usedName = variants[0];

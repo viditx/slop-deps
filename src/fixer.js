@@ -29,6 +29,43 @@ export function parseFixes(text) {
   return parsed.filter(fx => fx && typeof fx.file === 'string' && typeof fx.old === 'string');
 }
 
+// Security: --fix sends flagged import lines to an AI, and the scanned code is
+// untrusted (a malicious repo can carry prompt-injection instructions telling
+// the model to rewrite lines arbitrarily). These guards make a fix acceptable
+// ONLY when the resulting line is still a plain import/manifest entry —
+// arbitrary code injection through fx.new is rejected.
+
+function onlyQuotedSpecifierChanged(oldLine, newLine) {
+  // JS/TS/JSON/TOML: the line must stay identical except for the first quoted
+  // string (the module specifier / dependency key).
+  const re = /(['"])([^'"]*)\1/;
+  const a = re.exec(oldLine);
+  const b = re.exec(newLine);
+  if (!a || !b) return null; // no quoted specifier on one side — caller falls back to grammar
+  if (a.index !== b.index) return false;
+  return oldLine.slice(0, a.index) === newLine.slice(0, b.index)
+    && oldLine.slice(a.index + a[0].length) === newLine.slice(b.index + b[0].length);
+}
+
+const PY_LINE = /^\s*(?:from\s+[A-Za-z0-9_.]+\s+import\s+[A-Za-z0-9_.*\s,]+|import\s+[A-Za-z0-9_.\s,]+)$/;
+const RS_LINE = /^\s*(?:pub\s+)?use\s+[A-Za-z0-9_:{}*;,\s]+;?\s*$/;
+const REQ_LINE = /^\s*[A-Za-z0-9_][A-Za-z0-9_.\-[\]]*(\s*[=<>~!]=?\s*[A-Za-z0-9._\-*,\s]+)?\s*$/;
+const ASSIGN_LINE = /^\s*["']?[A-Za-z0-9_.\-]+["']?\s*[:=]\s*["'][A-Za-z0-9_.,^~<>=*!+\- ]*["']\s*,?\s*$/;
+
+function isSafeReplacement(oldLine, newLine, relFile) {
+  if (typeof newLine !== 'string' || newLine === oldLine) return true;
+  if (/\.pyi?$/i.test(relFile)) return PY_LINE.test(oldLine) && PY_LINE.test(newLine);
+  if (/\.rs$/i.test(relFile)) return RS_LINE.test(oldLine) && RS_LINE.test(newLine);
+  if (/\.txt$/i.test(relFile)) return REQ_LINE.test(oldLine) && REQ_LINE.test(newLine);
+  if (/\.(json|toml)$/i.test(relFile)) {
+    const shape = onlyQuotedSpecifierChanged(oldLine, newLine);
+    if (shape === true) return true;
+    return ASSIGN_LINE.test(oldLine) && ASSIGN_LINE.test(newLine);
+  }
+  // .js/.ts/.tsx/.jsx/.vue/.svelte/.astro and anything else with quotes
+  return onlyQuotedSpecifierChanged(oldLine, newLine) === true;
+}
+
 export async function applyFixes(targetDir, fixes, { dryRun = false } = {}) {
   const results = [];
   const byFile = new Map();
@@ -65,6 +102,10 @@ export async function applyFixes(targetDir, fixes, { dryRun = false } = {}) {
         continue;
       }
       const before = lines[idx];
+      if (!isSafeReplacement(before, fx.new, relFile)) {
+        results.push({ ...fx, applied: false, reason: 'rejected: only the package specifier may change (possible injection)' });
+        continue;
+      }
       lines[idx] = lines[idx].replace(fx.old, fx.new);
       if (lines[idx] !== before) {
         changed++;
@@ -74,7 +115,9 @@ export async function applyFixes(targetDir, fixes, { dryRun = false } = {}) {
       }
     }
     if (changed > 0 && !dryRun) {
-      await fs.writeFile(`${abs}.slop-deps.bak`, content, 'utf-8');
+      // Keep the FIRST backup only: flag 'wx' fails (EEXIST) if a .bak already
+      // exists, so repeated --fix runs never clobber the true pre-fix original.
+      await fs.writeFile(`${abs}.slop-deps.bak`, content, { encoding: 'utf-8', flag: 'wx' }).catch(() => {});
       await fs.writeFile(abs, lines.join('\n'), 'utf-8');
     }
   }

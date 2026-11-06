@@ -1,7 +1,16 @@
 node_modules/
 dist/
+*.zip
+*.pdb
+installer.exe
+slopdeps-installer.exe
+bin/*.exe
+bin/*.pdb
+site/**/node_modules/
+site/**/dist/
 .DS_Store
 *.log
 .env
 .idea/
 .vscode/
+.aistudio/

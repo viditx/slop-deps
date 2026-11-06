@@ -14,7 +14,7 @@ export function getAiConfig(env = process.env) {
   const defaults = DEFAULTS[provider] || DEFAULTS.openai;
   const baseUrl = (env.SLOP_AI_BASE_URL || defaults.baseUrl).replace(/\/+$/, '');
   const model = env.SLOP_AI_MODEL || defaults.model;
-  if (!key && baseUrl.includes('://127.0.0.1') || !key && baseUrl.includes('://localhost')) {
+  if (!key && (baseUrl.includes('://127.0.0.1') || baseUrl.includes('://localhost'))) {
     // local endpoints (Ollama, llama.cpp) usually need no key
     return { key: 'local', provider, baseUrl, model, local: true };
   }

@@ -736,30 +736,14 @@ async function run() {
   assert.ok(findTyposquatCandidate('pycrypt0dome', 'pypi', 10), 'pycryptodome lookalike must be caught');
   console.log('  ✔ PASS: expanded corpus catches wider typosquat variants\n');
 
-  // Test 48: dashboard server boots, serves UI, and scans over HTTP
-  console.log('Test 48: dashboard UI server');
-  const { startDashboardServer } = await import('../src/server.js');
-  const dashboard = await startDashboardServer({ rootDir: path.resolve('test') });
-  try {
-    const html = await fetch(`${dashboard.url}/`).then(r => {
-      assert.equal(r.status, 200, 'Dashboard must be served at /');
-      return r.text();
-    });
-    assert.ok(html.includes('slop'), 'Dashboard HTML must contain the tool name');
-    assert.ok(html.includes('/api/scan'), 'Dashboard must be wired to the scan API');
-
-    const scanRes = await fetch(`${dashboard.url}/api/scan?dir=.`);
-    const scanData = await scanRes.json();
-    assert.ok(scanData.stats && typeof scanData.stats.total === 'number', 'Scan API must return stats');
-    assert.ok(scanData.stats.critical >= 5, 'Fixture directory must yield its hallucinated packages over the API');
-
-    const sarifRes = await fetch(`${dashboard.url}/api/scan?dir=.&format=sarif`);
-    const sarifData = await sarifRes.json();
-    assert.equal(sarifData.sarif.version, '2.1.0', 'SARIF format must be served over the API');
-  } finally {
-    await dashboard.close();
-  }
-  console.log('  ✔ PASS: dashboard serves UI, JSON scan and SARIF endpoints on localhost\n');
+  // Test 48: direct programmatic scan and SARIF extraction
+  console.log('Test 48: direct programmatic scan & SARIF generation');
+  const scanData = await scanDirectory(path.resolve('test'), { offline: true, allowConfig: false });
+  assert.ok(scanData.stats && typeof scanData.stats.total === 'number', 'Scan must return stats');
+  assert.ok(scanData.stats.critical >= 5, 'Fixture directory must yield its hallucinated packages');
+  const sarifObj = toSarif(scanData.findings);
+  assert.equal(sarifObj.version, '2.1.0', 'SARIF format must be 2.1.0');
+  console.log('  ✔ PASS: headless engine yields findings, stats, and SARIF without listening sockets\n');
 
   // Test 49: persistent cache roundtrip with TTL semantics
   console.log('Test 49: persistent cache layer');
@@ -946,6 +930,70 @@ async function run() {
     assert.ok(fixRun.stderr.includes('BYOK'), 'Error must explain the BYOK requirement');
   }
   console.log('  ✔ PASS: --fix fails closed without a key, never silently skips\n');
+
+  // Test 58: CLI argument error handling (rejects invalid options fail-closed)
+  console.log('Test 58: CLI fail-closed argument validation');
+  {
+    const badRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--non-existent-flag'], { encoding: 'utf-8' });
+    assert.equal(badRun.status, 2, 'Unrecognized options must exit 2');
+    assert.ok(badRun.stderr.includes('Unrecognized option'), 'Error message must specify invalid option');
+  }
+  console.log('  ✔ PASS: unrecognized options fail-closed with code 2\n');
+
+  // Test 59: Filesystem missing directory path validation
+  console.log('Test 59: missing or invalid directory path validation');
+  {
+    const noDirRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--dir', 'non-existent-directory-xyz-12345'], { encoding: 'utf-8' });
+    assert.equal(noDirRun.status, 2, 'Missing target directory must exit 2');
+  }
+  console.log('  ✔ PASS: missing target directories fail-closed with code 2\n');
+
+  // Test 60: --fix rejects injection-shaped AI rewrites (prompt-injection guard)
+  console.log('Test 60: fixer injection guard');
+  {
+    const { applyFixes } = await import('../src/fixer.js');
+    const os = await import('node:os');
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), 't60-'));
+    fs.writeFileSync(path.join(proj, 'app.js'), "import reqeusts from 'reqeusts';\nimport lodash from 'lodash';\n");
+    fs.writeFileSync(path.join(proj, 'app.py'), "import reqeusts\nimport json\n");
+    const fixes = [
+      // benign: specifier-only change must apply
+      { file: 'app.js', line: 1, old: "import reqeusts from 'reqeusts'", new: "import reqeusts from 'requests';" },
+      // injection: arbitrary code appended after the specifier
+      { file: 'app.js', line: 2, old: "import lodash from 'lodash'", new: "import lodash from 'lodash'; require('child_process').exec('rm -rf /')" },
+      // injection: whole-line rewrite
+      { file: 'app.js', line: 2, old: "import lodash from 'lodash'", new: "process.exit(1)" },
+      // python injection: statement smuggling
+      { file: 'app.py', line: 1, old: "import reqeusts", new: "import requests; __import__('os').system('pwned')" },
+      // benign python fix
+      { file: 'app.py', line: 1, old: "import reqeusts", new: "import requests" },
+    ];
+    const results = await applyFixes(proj, fixes);
+    const byOld = new Map(results.map((r) => [r.old, r]));
+    assert.ok(byOld.get("import reqeusts from 'reqeusts'").applied, 'Specifier-only fix must apply');
+    assert.ok(!byOld.get("import lodash from 'lodash'; require('child_process').exec('rm -rf /')"), 'sanity');
+    const rejected = results.filter((r) => r.reason && r.reason.startsWith('rejected'));
+    assert.equal(rejected.length, 3, `Exactly 3 injection-shaped rewrites must be rejected (got ${rejected.length})`);
+    const jsContent = fs.readFileSync(path.join(proj, 'app.js'), 'utf-8');
+    assert.ok(!jsContent.includes('child_process'), 'Injected code must never land in the file');
+    assert.ok(jsContent.includes("from 'requests'"), 'Benign fix must be applied');
+    const pyContent = fs.readFileSync(path.join(proj, 'app.py'), 'utf-8');
+    assert.ok(!pyContent.includes('pwned'), 'Python statement smuggling must be rejected');
+    assert.ok(pyContent.includes('import requests'), 'Benign python fix must be applied');
+    fs.rmSync(proj, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: only specifier-only rewrites pass; code injection is rejected\n');
+
+  // Test 61: CI workflow must be valid YAML with sane branch filters
+  console.log('Test 61: CI workflow sanity');
+  {
+    const ci = fs.readFileSync(path.resolve('.github/workflows/ci.yml'), 'utf-8');
+    assert.ok(!/branches:\s*ain\]/.test(ci), 'ci.yml must not contain the corrupted "ain]" branch filter');
+    assert.equal((ci.match(/branches:\s*\[main\]/g) || []).length, 2, 'Both push and pull_request must filter on [main]');
+    const action = fs.readFileSync(path.resolve('action.yml'), 'utf-8');
+    assert.ok(action.includes('!cancelled()'), 'SARIF upload must use !cancelled() so artifacts survive strict failures');
+  }
+  console.log('  ✔ PASS: CI triggers on [main]; action uploads SARIF even on strict failure\n');
 
   console.log('🎉 All test assertions passed successfully!');
 }

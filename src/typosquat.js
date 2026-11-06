@@ -199,18 +199,21 @@ export function corpusSize(ecosystem) {
 // popular packages straight from the bundled corpus with zero network calls.
 export function isPopularPackage(name, ecosystem) {
   if (!name || !CORPUS_EXACT[ecosystem]) return false;
-  const bare = ecosystem === 'npm' && name.startsWith('@') ? name.slice(name.indexOf('/') + 1) : name;
-  return CORPUS_EXACT[ecosystem].has(bare.toLowerCase());
+  // Scoped packages must match their exact scoped name; stripping scopes allows
+  // malicious packages like @evil/lodash to masquerade as popular packages offline.
+  return CORPUS_EXACT[ecosystem].has(name.toLowerCase());
 }
 export function findTyposquatCandidate(name, ecosystem, ageDays = Infinity) {
   const corpus = CORPUS[ecosystem];
   if (!corpus || !name) return null;
 
+  // A corpus member is popular in its own right — never flag one giant as a squat of another ('react' vs 'preact').
+  if (CORPUS_EXACT[ecosystem]?.has(name.toLowerCase())) return null;
+
   // Compare the package part after any scope; a scoped name cannot typosquat an
   // unscoped popular package and vice versa.
   const bare = ecosystem === 'npm' && name.startsWith('@') ? name.slice(name.indexOf('/') + 1) : name;
-  // A corpus member is popular in its own right — never flag one giant as a squat of another ('react' vs 'preact').
-  if (CORPUS_EXACT[ecosystem]?.has(bare)) return null;
+  if (!name.startsWith('@') && CORPUS_EXACT[ecosystem]?.has(bare.toLowerCase())) return null;
   const normalized = normalizeName(bare);
 
   let best = null;

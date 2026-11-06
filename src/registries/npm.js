@@ -22,13 +22,13 @@ export async function checkNpmPackage(pkgName) {
     return invalidResult;
   }
 
-  const persisted = await cacheGet(`npm:${clean.toLowerCase()}`);
-  if (persisted) {
-    CACHE.set(pkgName, persisted);
-    return persisted;
-  }
-
   const promise = (async () => {
+    const persisted = await cacheGet(`npm:${clean.toLowerCase()}`);
+    if (persisted) {
+      CACHE.set(pkgName, persisted);
+      return persisted;
+    }
+
     // Encode scoped packages properly: @org/pkg -> @org%2Fpkg
     const encodedName = clean.startsWith('@') 
       ? `@${clean.slice(1).replace('/', '%2F')}` 

@@ -27,13 +27,13 @@ export async function checkPyPiPackage(pkgName) {
     return invalidResult;
   }
 
-  const persisted = await cacheGet(`pypi:${cacheKey}`);
-  if (persisted) {
-    CACHE.set(cacheKey, persisted);
-    return persisted;
-  }
-
   const promise = (async () => {
+    const persisted = await cacheGet(`pypi:${cacheKey}`);
+    if (persisted) {
+      CACHE.set(cacheKey, persisted);
+      return persisted;
+    }
+
     const url = `https://pypi.org/pypi/${encodeURIComponent(distName)}/json`;
 
     const controller = new AbortController();

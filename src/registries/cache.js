@@ -34,9 +34,16 @@ async function load() {
       if (stat.isSymbolicLink()) throw new Error('cache path is a symbolic link');
       const raw = await fs.readFile(CACHE_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
-      store = parsed && typeof parsed === 'object' ? parsed : {};
+      store = Object.create(null);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const k of Object.keys(parsed)) {
+          if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+            store[k] = parsed[k];
+          }
+        }
+      }
     } catch {
-      store = {};
+      store = Object.create(null);
     }
     return store;
   })();
@@ -44,6 +51,7 @@ async function load() {
 }
 
 export async function cacheGet(key, now = Date.now()) {
+  if (!key || key === '__proto__' || key === 'constructor' || key === 'prototype') return null;
   const s = await load();
   const entry = s[key];
   if (!entry) return null;
@@ -55,6 +63,7 @@ export async function cacheGet(key, now = Date.now()) {
 }
 
 export async function cacheSet(key, result, now = Date.now()) {
+  if (!key || key === '__proto__' || key === 'constructor' || key === 'prototype') return;
   if (!result || result.status === 'NETWORK_ERROR' || result.status === 'UNKNOWN') return;
   const s = await load();
   s[key] = { t: now, r: result };

@@ -28,6 +28,7 @@ runs:
         SLOP_DEPS_STRICT: ${{ inputs.strict }}
         SLOP_DEPS_SARIF: ${{ inputs.sarif }}
       run: |
+        set +e
         set -- npx --yes slop-deps@1.4.0 --dir "$SLOP_DEPS_DIRECTORY"
         if [ "$SLOP_DEPS_STRICT" = "true" ]; then
           set -- "$@" --strict
@@ -37,10 +38,17 @@ runs:
         else
           "$@"
         fi
+        code=$?
+        echo "SCAN_EXIT=$code" >> "$GITHUB_OUTPUT" || true
+        exit $code
 
     - name: Upload SARIF artifact
-      if: ${{ inputs.sarif == 'true' }}
-      uses: actions/upload-artifact@v4
+      # !cancelled() is essential: the scan step exits 2 whenever it finds
+      # something (strict mode) — without this guard the artifact upload is
+      # skipped exactly when findings exist, i.e. when the SARIF is needed.
+      if: ${{ !cancelled() && inputs.sarif == 'true' }}
+      uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
       with:
         name: slop-deps-sarif
         path: slop-deps.sarif
+        if-no-files-found: ignore
