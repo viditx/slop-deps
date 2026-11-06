@@ -16,7 +16,7 @@ const args = process.argv.slice(2);
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-slop-deps: AI Dependency Hallucination & Supply-Chain Sentinel
+slop-deps: Dependency Hallucination & Typosquat Scanner
 
 USAGE:
   npx slop-deps [options]

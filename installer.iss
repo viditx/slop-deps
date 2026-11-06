@@ -24,7 +24,7 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 ChangesEnvironment=yes
-UninstallDisplayName={#MyAppName} (AI Dependency Sentinel)
+UninstallDisplayName={#MyAppName} (AI Dependency Hallucination Scanner)
 UninstallDisplayIcon={app}\bin\slopdeps.exe
 
 [Languages]
@@ -137,7 +137,7 @@ begin
     'Terminal Command Shortcut',
     'Choose your preferred command shortcut',
     'Choose what command name you want to type in CMD or PowerShell to run slop-deps.'#13#10 +
-    'You can keep the default "slopdeps" or give yourself a custom shortcut (e.g. slp, sentinel, chk).');
+    'You can keep the default "slopdeps" or give yourself a custom shortcut (e.g. slp, sd, chk).');
   ShortcutPage.Add('Command Shortcut:', False);
   ShortcutPage.Values[0] := 'slopdeps';
 

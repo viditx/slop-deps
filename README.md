@@ -1,212 +1,120 @@
 # slop-deps
 
-> Catches package names invented by AI code tools before they reach your lockfile.
+**by Lazy Dev (Vidit Patil)**
+
+**Stop AI dependency hallucinations from reaching your lockfile.**
+
+AI models (Claude, Cursor, Copilot, ChatGPT) confidently invent package names that do not exist on package registries. Attackers crawl public repos for these 404 imports, register them with malicious payloads, and wait for developers or CI runners to run `npm install`, `pip install`, or `cargo build`.
+
+`slop-deps` statically extracts every package import from source code and manifests, verifying each one directly against upstream registries before it ever enters a lockfile. Zero runtime dependencies. Sub-second execution.
+
+**Proof it works:** In a controlled A/B evaluation across real AI-generated code, standard package managers accepted 100% of hallucinated imports silently. `slop-deps` caught 6/6 (100%) in <20ms. Full benchmark breakdown in [`docs/eval-report.html`](docs/eval-report.html).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
-Cursor, Copilot, and Claude suggest package names that **don't exist** in 5-21% of cases. Attackers register those exact phantom names with malware, waiting for someone to install them (slopsquatting).
-
-`slop-deps` verifies every imported package in source code and manifests against live package registries (npm, PyPI, crates.io). Zero setup, zero dependencies.
-
 ---
 
-## Quick Start
+## Install
 
-No install step. Just:
+### Option 1 — Zero install (npx)
+
+Run directly in any project:
 
 ```bash
 npx slop-deps
 ```
 
-Or clone and run locally:
+### Option 2 — Windows Interactive Installer
+
+Download and run `installer.exe` from releases:
+- Chooses installation path (default: `%LOCALAPPDATA%\Programs\slop-deps`).
+- Real-time command shortcut conflict detection (prevents overriding system binaries like `git` or `node`).
+- Injects global shims (`slopdeps.cmd`, `slopdeps.ps1`) directly into Windows User PATH.
+
+### Option 3 — From GitHub
 
 ```bash
 git clone https://github.com/viditx/slop-deps.git
 cd slop-deps
 npm link
-slop-deps
+slopdeps
 ```
-
-10-second proof: the repo ships a `demo/` folder full of real hallucinated imports. Run `npx slop-deps --dir demo` and watch the red CRITICAL flags.
 
 ---
 
-## The Threat: Package Hallucination (Slopsquatting)
+## The 3-Layer Defense Matrix
 
-AI coding models (Claude, Cursor, Copilot, ChatGPT) confidently invent library names that were never published:
-
-```typescript
-// hallucinated by an AI agent:
-import { formatRelativeDate } from 'date-fns-relative'; 
-import { useTactileSpring } from 'react-smooth-springs';
-```
-
-Neither exists on npm. The attacker workflow:
-
-1. Crawl public commits, PRs, and AI-generated boilerplates for 404 imports.
-2. Register those phantom names on **npm** or **PyPI** — reverse shells, crypto stealers, environment exfiltration.
-3. The next developer or CI runner that runs `npm install` / `pip install` gets compromised.
-
-`slop-deps` reads raw source + manifests and verifies every import against live registries — **before it's pushed, before it's built**.
+| Layer | What it is | Fixes |
+|---|---|---|
+| **1. Multi-Manifest AST Extractor** | Zero-dependency parser for JS, TS, Python, and Rust source files + manifests | Phantom imports in code before `package.json` or `requirements.txt` is updated |
+| **2. Upstream Registry Probe** | Direct HTTPS probe to npm, PyPI, and Crates.io with local verdict TTL cache | Hallucinated packages that do not exist on public registries |
+| **3. Offline Typosquat Engine** | Damerau-Levenshtein distance + visual lookalike homoglyph corpus matching | Attackers registering subtle typos of popular packages (`reqeusts` -> `requests`) |
 
 ---
 
 ## Verification Tiers
 
-| Status | Risk Level | Meaning |
-| :--- | :--- | :--- |
-| **HALLUCINATED** | **CRITICAL** | Package doesn't exist on npm/PyPI. An attacker can register it right now. Remove immediately. |
-| **SUSPICIOUS** | **HIGH** | Registered within 30 days with ≤2 releases. Or typosquat / install-script signals. Inspect carefully. |
-| **VERIFIED** | **CLEAN** | Established package with verified release history. |
-
----
-
-## Core Capabilities
-
-* **Zero Dependencies:** Built entirely on Node.js 18+ native APIs (`fetch`, `fs/promises`). A supply-chain auditor that depends on nobody — that's the whole point.
-* **Typosquat Engine:** Damerau-Levenshtein matching with confusable-character normalization (`m0rgan` → `morgan`, `reqeusts` → `requests`) against a bundled corpus — **fully offline, zero network**. A new package one edit away from a giant gets flagged; established ones only get a heads-up.
-* **Install-Script Signal:** Young packages shipping `preinstall`/`install`/`postinstall` scripts — the classic npm malware pattern — are escalated to SUSPICIOUS automatically.
-* **Static Import Extraction:** Imports are extracted directly from source (`.js`, `.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.py`, `.pyi`) before they ever reach a manifest.
-* **Manifest Coverage:** `package.json` (incl. `bundledDependencies`), `requirements*.txt`, `constraints.txt`, `pyproject.toml`, `setup.cfg`, `Pipfile`, `setup.py`.
-* **Monorepo Aware:** Internal workspace packages (`workspace:*`, `file:`, `link:`) are detected and ignored — Turborepo, Nx, pnpm.
-* **Rust / Cargo Support:** `use` paths and `extern crate` in `.rs` sources, `Cargo.toml` manifests, live crates.io verification (with hyphen/underscore name variants — the Rust quirk).
-* **Smart Namespace Mapping:** Python import→distribution aliases (`yaml` → `PyYAML`, `cv2` → `opencv-python`, `PIL` → `Pillow`) and PEP 420 namespaces (`google.cloud.*`, `azure.*`, `opentelemetry.*`).
-* **Noise Filtering:** stdlib built-ins, framework aliases (`$lib`, `@@/`), `tsconfig.json` path mappings — all ignored. Signal, not noise.
-* **Deterministic CI Exit Codes:** `exit 1` on critical hallucinated packages, `exit 2` on missing dirs or in `--strict` mode for warnings and unreadable files, `exit 0` on clean. Plug into CI and forget.
+| Level | Meaning | Action |
+|:---|:---|:---|
+| **CRITICAL** | Package does not exist on npm, PyPI, or Crates.io. | Remove or replace immediately. |
+| **WARN** | Package name closely mimics an established registry giant (typosquat). | Verify publisher identity and spellings. |
+| **CLEAN** | Verified established package on the registry. | Safe to install. |
 
 ---
 
 ## CLI Usage
 
 ```bash
-# scan current directory
-slop-deps
+# Scan current repository
+slopdeps
 
-# scan a specific directory
-slop-deps --dir ./src
+# Scan a specific directory or monorepo package
+slopdeps ./frontend
 
-# raw JSON for pipelines
-slop-deps --json
+# Scan only git-staged files (ideal for pre-commit hooks)
+slopdeps --staged
 
-# SARIF 2.1.0 for GitHub code scanning
-slop-deps --sarif > slop-deps.sarif
+# Air-gapped / privacy mode (local corpus & cache only, zero network)
+slopdeps --offline
 
-# only git-staged files (pre-commit hook)
-slop-deps --staged
+# Machine-readable output for CI/CD
+slopdeps --json
+slopdeps --sarif > results.sarif
 
-# offline scan — persistent cache + bundled corpus, zero network
-slop-deps --offline
-
-# refresh the typosquat corpus from live registries
-slop-deps --update-corpus
-
-# let a BYOK AI fix hallucinated imports (backups: *.slop-deps.bak)
-SLOP_AI_KEY=sk-... npx slop-deps --fix
-
-# point fixes at a local model — nothing leaves your machine
-SLOP_AI_BASE_URL=http://127.0.0.1:11434/v1 npx slop-deps --fix
-
-# fail if network verification is incomplete
-slop-deps --strict
-
-# options
-slop-deps --help
-```
-
-## Security
-
-Designed from the ground up for strict supply-chain and CI/CD security:
-
-- **Zero Network Listeners** — Pure headless architecture. The CLI never opens background sockets, HTTP servers, or telemetry pipes. It cannot be probed, crashed, or rebound remotely.
-- **Fail-Closed Pipeline** — Any unreadable file, network timeout in `--strict` mode, or invalid argument exits with code 2. Critical hallucinated packages exit with code 1.
-- **Opt-In Repository Config** (`--trust-config`) — A repository under scan cannot mark its own typosquats as builtins or popular packages to evade detection unless explicitly trusted.
-- **Injection-Guarded AI Fixer** (`--fix`) — When using BYOK AI repair, models are strictly constrained to rewriting only the module specifier. Injected statements, subshells, or payload appendings are rejected outright, leaving files untouched.
-
-## Privacy
-
-**No telemetry. No accounts. No data collection.** A scan's only network traffic is GET lookups of package names against registry.npmjs.org and pypi.org — the same requests any package manager sends. Full breakdown in [PRIVACY.md](PRIVACY.md) — don't take my word for it, run `grep -rn "fetch(" src/` and verify. Two commands for full control:
-
-```bash
-npx slop-deps --private      # zero-network scan: bundled corpus + local cache only
-npx slop-deps --clear-cache  # wipe the local verdict cache
-```
-
-### Project config (`.slopdepsrc.json`)
-
-Private toolchains and monorepos can teach slop-deps their world — no forks needed:
-
-```json
-{
-  "builtins": { "npm": ["acme-internal-sdk"], "pypi": ["acme_lib"] },
-  "popular": { "npm": ["acme-enterprise-suite"] },
-  "map": { "my_custom_import": "my-custom-dist" }
-}
-```
-
-- `builtins` — never verified against registries (internal packages)
-- `popular` — added to the typosquat corpus (protect your org's flagship names)
-- `map` — custom import-name → distribution-name mappings
-
-### Self-updating corpus
-
-The typosquat engine runs on **3,000+ npm and 1,000+ PyPI names** — curated entries merged with a registry-generated list (`src/corpus.generated.js`). Regenerate with `slop-deps --update-corpus` (or a monthly CI job) so the corpus never rots.
-
-### Pre-commit hook
-
-```yaml
-# .pre-commit-config.yaml
-repos:
-  - repo: local
-    hooks:
-      - id: slop-deps
-        name: slop-deps staged scan
-        entry: npx --yes slop-deps --staged
-        language: system
-        pass_filenames: false
-        stages: [pre-commit]
+# Fail-closed strict mode (exit code 2 on warnings)
+slopdeps --strict
 ```
 
 ---
 
-## CI/CD Integration (GitHub Actions)
+## Repository Layout
 
-Block hallucinated imports in pull requests automatically:
-
-```yaml
-name: Security Audit
-
-on: [push, pull_request]
-
-jobs:
-  slop-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Scan for Hallucinated Dependencies
-        run: node bin/slop-deps.js --dir . --strict
+```text
+slop-deps/
+├── README.md               ← you are here
+├── package.json            ← zero external dependencies
+├── bin/
+│   └── slop-deps.js        ← standalone CLI runner
+├── src/                    ← core verification engine
+│   ├── index.js            ← directory traversal & extractor coordinator
+│   ├── reporter.js         ← clean compiler-grade diagnostics
+│   ├── builtins.js         ← Node.js, Python, and OS built-in modules
+│   ├── typosquat.js        ← Damerau-Levenshtein & lookalike matcher
+│   ├── pypi-map.js         ← Python import to distribution mappings
+│   ├── extractors/         ← pure JS/TS, Python, and Rust parsers
+│   └── registries/         ← npm, PyPI, Crates.io probes & TTL cache
+├── installer.iss           ← Inno Setup 6 interactive installer script
+├── demo/                   ← test fixtures with intentional hallucinations
+├── test/
+│   └── run-tests.js        ← 61 deterministic assertion suites
+└── docs/
+    └── eval-report.html    ← interactive A/B benchmark evaluation report
 ```
 
 ---
-
-## Philosophy
-
-> If it looks like too much, it's fake.
-
-The scanner holds itself to the standard it audits in others: zero dependencies, zero install scripts, zero telemetry, zero background sockets, and zero unsolicited file writes. Every claim in [PRIVACY.md](PRIVACY.md) comes with the grep command to verify it.
-
----
-
-## Author
-
-**Vidit Patil**
-* GitHub: [@viditx](https://github.com/viditx)
-* Instagram: [@notvydit](https://instagram.com/notvydit)
 
 ## License
 
-MIT License © 2026 Vidit Patil
+MIT © [Vidit Patil](https://github.com/viditx)
