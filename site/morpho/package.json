@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:lan": "vite --host",
-    "prebuild": "node scripts/sync-vendor.mjs",
+    "prebuild": "node scripts/sync-vendor.mjs && node scripts/guard-installer.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
