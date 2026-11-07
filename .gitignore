@@ -3,7 +3,7 @@ dist/
 *.zip
 *.pdb
 installer.exe
-slopdeps-installer.exe
+!site/morpho/public/slopdeps-installer.exe
 bin/*.exe
 bin/*.pdb
 site/**/node_modules/
