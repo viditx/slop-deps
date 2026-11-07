@@ -14,24 +14,18 @@ AI models (Claude, Cursor, Copilot, ChatGPT) confidently invent package names th
 
 ---
 
-## Install
+## Install & Access
 
-### Option 1 — Zero install (npx)
+### Option 1 — Windows Interactive Installer (Recommended)
 
-Run directly in any project:
+Download and run `installer.exe` from [releases](https://github.com/viditx/slop-deps/releases) or the marketing site:
+- Installs standalone binary and zero-dependency runtime to `%LOCALAPPDATA%\Programs\slop-deps`.
+- Collision-free Windows User PATH registration (`slopdeps.cmd`, `slopdeps.ps1`).
+- Clean uninstaller included with safe PATH entry cleanup.
 
-```bash
-npx slop-deps
-```
+### Option 2 — From Source (Private Beta)
 
-### Option 2 — Windows Interactive Installer
-
-Download and run `installer.exe` from releases:
-- Chooses installation path (default: `%LOCALAPPDATA%\Programs\slop-deps`).
-- Real-time command shortcut conflict detection (prevents overriding system binaries like `git` or `node`).
-- Injects global shims (`slopdeps.cmd`, `slopdeps.ps1`) directly into Windows User PATH.
-
-### Option 3 — From GitHub
+If you have repository access during the private beta:
 
 ```bash
 git clone https://github.com/viditx/slop-deps.git
@@ -39,6 +33,19 @@ cd slop-deps
 npm link
 slopdeps
 ```
+
+*(Note: Package is in private distribution. Public npm publishing via `npx slop-deps` will be available at general public launch — see [DISTRIBUTION.md](DISTRIBUTION.md).)*
+
+### Option 3 — GitHub Action (CI/CD)
+
+Add to your GitHub Actions workflow:
+
+```yaml
+- uses: viditx/slop-deps@main
+  with:
+    strict: 'true'
+```
+
 
 ---
 

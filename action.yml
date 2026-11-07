@@ -29,7 +29,7 @@ runs:
         SLOP_DEPS_SARIF: ${{ inputs.sarif }}
       run: |
         set +e
-        set -- npx --yes slop-deps@1.4.0 --dir "$SLOP_DEPS_DIRECTORY"
+        set -- node "$GITHUB_ACTION_PATH/bin/slop-deps.js" --dir "$SLOP_DEPS_DIRECTORY"
         if [ "$SLOP_DEPS_STRICT" = "true" ]; then
           set -- "$@" --strict
         fi
