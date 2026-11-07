@@ -1112,7 +1112,71 @@ async function run() {
     process.stdout.write(res.stdout);
   }
 
-  console.log('🎉 All 76 test assertions passed successfully!');
+  // Test 77: Dynamic/static binary string concatenation in JS/TS (Flaw 1)
+  console.log('Test 77: Dynamic/static binary string concatenation in JS/TS');
+  {
+    const concatCode = `
+      const a = import('foo' + 'bar');
+      const b = require('@scope/' + 'pkg');
+      const c = import('alpha/' + 'beta/' + 'gamma');
+    `;
+    const imports = extractJsImports(concatCode, 'app.js');
+    const names = imports.map(i => i.name).sort();
+    assert.ok(names.includes('foobar'), 'Must extract foobar from concat');
+    assert.ok(names.includes('@scope/pkg'), 'Must extract @scope/pkg from concat');
+    assert.ok(names.includes('alpha'), 'Must extract alpha from multi-concat');
+  }
+  console.log('  ✔ PASS: static string concatenation in import/require resolved cleanly\n');
+
+  // Test 78: Enterprise private scopes (.npmrc & root package discovery) (Flaw 2)
+  console.log('Test 78: Enterprise private scopes (.npmrc & root package discovery)');
+  {
+    const os = await import('node:os');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-corp-'));
+    fs.writeFileSync(path.join(tempDir, '.npmrc'), '@myenterprise:registry=https://npm.pkg.github.com\n');
+    fs.writeFileSync(path.join(tempDir, 'app.js'), "import auth from '@myenterprise/internal-auth';\n");
+    const res = await scanDirectory(tempDir, { allowConfig: false });
+    const authPkg = res.findings.find(f => f.name === '@myenterprise/internal-auth');
+    assert.ok(authPkg, 'Must find @myenterprise/internal-auth');
+    assert.equal(authPkg.status, 'VERIFIED');
+    assert.equal(authPkg.risk, 'CLEAN');
+    assert.equal(authPkg.verifiedVia, 'private_scope');
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: enterprise private scopes in .npmrc verified without false 404s\n');
+
+  // Test 79: Fixer secondary hallucination guard & circular AI prevention (Flaw 3)
+  console.log('Test 79: Fixer secondary hallucination guard');
+  {
+    const { applyFixes } = await import('../src/fixer.js');
+    const os = await import('node:os');
+    const tempFixDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-fix-'));
+    fs.writeFileSync(path.join(tempFixDir, 'app.js'), "import req from 'reqeusts';\n");
+
+    const fakeFix = [{
+      file: 'app.js',
+      line: 1,
+      old: "'reqeusts'",
+      new: "'hallucinated-super-fake-pkg-404-xyz'"
+    }];
+    const fakeRes = await applyFixes(tempFixDir, fakeFix);
+    assert.equal(fakeRes[0].applied, false, 'Secondary hallucination must be rejected');
+    assert.ok(fakeRes[0].reason.includes('secondary hallucination'), 'Reason must mention secondary hallucination');
+
+    const legitFix = [{
+      file: 'app.js',
+      line: 1,
+      old: "'reqeusts'",
+      new: "'requests'"
+    }];
+    const legitRes = await applyFixes(tempFixDir, legitFix);
+    assert.equal(legitRes[0].applied, true, 'Legit fix must be applied');
+
+    fs.rmSync(tempFixDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: fixer secondary hallucination guard prevents circular AI traps\n');
+
+  console.log('🎉 All 79 test assertions passed successfully!');
 }
 
 run().catch((err) => {

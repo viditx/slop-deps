@@ -147,6 +147,49 @@ async function loadRcConfig(targetDir) {
   }
 }
 
+async function loadPrivateScopes(targetDir, rc) {
+  const scopes = new Set();
+  if (rc?.privateScopes && Array.isArray(rc.privateScopes)) {
+    for (const s of rc.privateScopes) {
+      const clean = String(s).trim().toLowerCase();
+      if (clean) scopes.add(clean.startsWith('@') ? clean : `@${clean}`);
+    }
+  }
+  if (rc?.ignoreScopes && Array.isArray(rc.ignoreScopes)) {
+    for (const s of rc.ignoreScopes) {
+      const clean = String(s).trim().toLowerCase();
+      if (clean) scopes.add(clean.startsWith('@') ? clean : `@${clean}`);
+    }
+  }
+  const envScopes = process.env.SLOP_DEPS_PRIVATE_SCOPES || process.env.SLOP_DEPS_IGNORE_SCOPES;
+  if (envScopes) {
+    for (const s of envScopes.split(',')) {
+      const clean = s.trim().toLowerCase();
+      if (clean) scopes.add(clean.startsWith('@') ? clean : `@${clean}`);
+    }
+  }
+  const npmrcCandidates = [
+    path.join(targetDir, '.npmrc'),
+    path.join(process.cwd(), '.npmrc')
+  ];
+  for (const nPath of npmrcCandidates) {
+    try {
+      if (existsSync(nPath)) {
+        const raw = await fs.readFile(nPath, 'utf-8');
+        for (const line of raw.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('#') || trimmed.startsWith(';')) continue;
+          const m = trimmed.match(/^@([a-zA-Z0-9_.-]+):registry\s*=/i);
+          if (m && m[1]) {
+            scopes.add(`@${m[1].toLowerCase()}`);
+          }
+        }
+      }
+    } catch {}
+  }
+  return scopes;
+}
+
 export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   // Fail-closed: Ensure root directory actually exists!
   try {
@@ -168,9 +211,8 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   // staged mode: only content-read files present in this set (forward-slash absolute paths)
   const stagedFilter = options.stagedFiles || null;
 
-  if (options.allowConfig !== false) {
-    await loadRcConfig(targetDir);
-  }
+  const rc = options.allowConfig !== false ? await loadRcConfig(targetDir) : null;
+  const privateScopes = await loadPrivateScopes(targetDir, rc);
 
   const dirNames = new Set();
   const traversalErrors = [];
@@ -222,6 +264,9 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
         const parsed = JSON.parse(content);
         if (parsed.name && typeof parsed.name === 'string') {
           localWorkspacePackages.add(parsed.name.toLowerCase());
+          if (parsed.name.startsWith('@')) {
+            privateScopes.add(parsed.name.split('/')[0].toLowerCase());
+          }
         }
       } catch {}
       if (!isStaged) continue;
@@ -413,6 +458,19 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   // honest UNKNOWN — never a faked CRITICAL or CLEAN.
   const findings = options.offline
     ? await mapConcurrent(targets, 8, async (target) => {
+        if (target.ecosystem === 'npm' && target.name.startsWith('@')) {
+          const scope = target.name.split('/')[0].toLowerCase();
+          if (privateScopes.has(scope)) {
+            return {
+              ...target,
+              status: 'VERIFIED',
+              risk: 'CLEAN',
+              exists: true,
+              verifiedVia: 'private_scope',
+              message: `Private enterprise scope '${scope}' (configured via .npmrc / .slopdepsrc.json).`
+            };
+          }
+        }
         if (isPopularPackage(target.name, target.ecosystem)) {
           return {
             ...target,
@@ -434,6 +492,19 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
         };
       })
     : await mapConcurrent(targets, 8, async (target) => {
+        if (target.ecosystem === 'npm' && target.name.startsWith('@')) {
+          const scope = target.name.split('/')[0].toLowerCase();
+          if (privateScopes.has(scope)) {
+            return {
+              ...target,
+              status: 'VERIFIED',
+              risk: 'CLEAN',
+              exists: true,
+              verifiedVia: 'private_scope',
+              message: `Private enterprise scope '${scope}' (configured via .npmrc / .slopdepsrc.json).`
+            };
+          }
+        }
         let check;
         if (target.ecosystem === 'npm') {
           check = await checkNpmPackage(target.name);

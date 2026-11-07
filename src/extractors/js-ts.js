@@ -188,6 +188,17 @@ function maskStrings(code) {
   return { masked: out, strings };
 }
 
+function resolveConcat(expr, strings) {
+  const parts = [];
+  const re = /['"`]([^'"`]+)['"`]/g;
+  let m;
+  while ((m = re.exec(expr)) !== null) {
+    const raw = m[1].replace(new RegExp(PH_START + '(\\d+)' + PH_END, 'g'), (_, i) => strings[+i] ?? '');
+    parts.push(raw);
+  }
+  return parts.join('');
+}
+
 function unmask(text, strings) {
   return text.replace(new RegExp(PH_START + '(\\d+)' + PH_END, 'g'), (_, i) => strings[+i] ?? '');
 }
@@ -352,7 +363,9 @@ const PATTERNS = [
   // 3: dynamic import: import('pkg', ...) and import.meta.resolve('pkg', ...)
   /\bimport(?:\.meta\.resolve)?\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g,
   // 4: test framework module mocks: jest.mock('pkg'), vi.mock('pkg'), etc.
-  /(?:^|[^\w.$])(?:jest|vi)\.(?:mock|requireActual|requireMock|importActual)\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g
+  /(?:^|[^\w.$])(?:jest|vi)\.(?:mock|requireActual|requireMock|importActual)\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g,
+  // 5: static concatenated strings in dynamic import/require: import('a' + 'b')
+  /(?:^|[^\w.$])(?:import(?:\.meta\.resolve)?|require(?:\.resolve)?)\s*\(\s*((?:['"`][^'"`]+['"`]\s*\+\s*)+['"`][^'"`]+['"`])\s*[,)]/g
 ];
 
 function getLineNumber(newlineOffsets, target) {
@@ -386,10 +399,11 @@ export function extractJsImports(sourceCode, filePath = '') {
   for (let pIdx = 0; pIdx < PATTERNS.length; pIdx++) {
     const regex = PATTERNS[pIdx];
     const isStatic = pIdx < 2;
+    const isConcat = pIdx === 5;
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(masked)) !== null) {
-      allMatches.push({ index: match.index, spec: match[1], isStatic });
+      allMatches.push({ index: match.index, spec: match[1], isStatic, isConcat });
     }
   }
   const contexts = buildJsxContexts(masked, allMatches.map((m) => m.index));
@@ -400,7 +414,9 @@ export function extractJsImports(sourceCode, filePath = '') {
       continue;
     }
 
-    const rawSpec = unmask(m.spec, strings).trim();
+    const rawSpec = m.isConcat
+      ? resolveConcat(m.spec, strings).trim()
+      : unmask(m.spec, strings).trim();
     // Skip template literals with dynamic interpolation
     if (rawSpec.includes('${')) {
       continue;

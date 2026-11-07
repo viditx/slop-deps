@@ -4,6 +4,11 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { isPopularPackage } from './typosquat.js';
+import { isBuiltin } from './builtins.js';
+import { checkNpmPackage } from './registries/npm.js';
+import { checkPyPiPackage } from './registries/pypi.js';
+import { checkRustPackage } from './registries/rust.js';
 
 const SYSTEM = `You fix broken package imports in source code. The scanner found imports referencing packages that do not exist on the registry (AI hallucinations) or that typosquat popular packages. For each finding, return the corrected import line: keep the language, style and named bindings identical, only change the package specifier to the real package the code clearly intended. If no real package plausibly matches, set "new" to null. Respond ONLY with a JSON array, no prose, no code fences.`;
 
@@ -66,7 +71,64 @@ function isSafeReplacement(oldLine, newLine, relFile) {
   return onlyQuotedSpecifierChanged(oldLine, newLine) === true;
 }
 
-export async function applyFixes(targetDir, fixes, { dryRun = false } = {}) {
+export function extractReplacementPackage(line, relFile) {
+  if (!line || typeof line !== 'string') return null;
+  const lower = (relFile || '').toLowerCase();
+
+  if (lower.endsWith('.py') || lower.endsWith('.pyi')) {
+    const fromMatch = line.match(/^\s*from\s+([A-Za-z0-9_.]+)/);
+    if (fromMatch) return fromMatch[1].split('.')[0];
+    const impMatch = line.match(/^\s*import\s+([A-Za-z0-9_.]+)/);
+    if (impMatch) return impMatch[1].split('.')[0];
+  }
+
+  if (lower.endsWith('.rs')) {
+    const rsMatch = line.match(/^\s*(?:pub\s+)?use\s+([A-Za-z0-9_]+)/);
+    if (rsMatch) return rsMatch[1];
+  }
+
+  const qMatch = line.match(/['"]([^'"]+)['"]/);
+  if (qMatch) {
+    const raw = qMatch[1].trim();
+    if (raw.startsWith('@')) {
+      const parts = raw.split('/');
+      return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : parts[0];
+    }
+    return raw.split('/')[0].split('@')[0];
+  }
+
+  if (lower.endsWith('.txt')) {
+    const reqMatch = line.match(/^\s*([A-Za-z0-9_.\-]+)/);
+    if (reqMatch) return reqMatch[1];
+  }
+
+  return null;
+}
+
+export async function verifyReplacementPackage(pkgName, ecosystem = 'npm') {
+  if (!pkgName) return false;
+  const clean = pkgName.trim();
+  const eco = ecosystem === 'cargo' ? 'cargo' : (ecosystem === 'pypi' ? 'pypi' : 'npm');
+
+  if (isBuiltin(clean, eco)) return true;
+  if (isPopularPackage(clean, eco)) return true;
+
+  try {
+    let res;
+    if (eco === 'npm') res = await checkNpmPackage(clean);
+    else if (eco === 'pypi') res = await checkPyPiPackage(clean);
+    else res = await checkRustPackage(clean);
+
+    if (res && (res.status === 'HALLUCINATED' || res.exists === false)) {
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+export async function applyFixes(targetDir, fixes, { dryRun = false, verifyReplacement = true } = {}) {
   const results = [];
   const byFile = new Map();
   for (const fx of fixes) {
@@ -110,6 +172,22 @@ export async function applyFixes(targetDir, fixes, { dryRun = false } = {}) {
       if (after === before) {
         results.push({ ...fx, applied: false, reason: 'no textual change' });
         continue;
+      }
+      if (verifyReplacement) {
+        const eco = (relFile.endsWith('.py') || relFile.endsWith('.pyi') || relFile.endsWith('requirements.txt')) ? 'pypi'
+          : relFile.endsWith('.rs') ? 'cargo' : 'npm';
+        const cand = extractReplacementPackage(after, relFile);
+        if (cand) {
+          const ok = await verifyReplacementPackage(cand, eco);
+          if (!ok) {
+            results.push({
+              ...fx,
+              applied: false,
+              reason: `rejected: AI suggested replacement '${cand}' does not exist on registry (secondary hallucination)`
+            });
+            continue;
+          }
+        }
       }
       lines[idx] = after;
       changed++;
