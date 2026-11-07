@@ -2,30 +2,87 @@
 
 **by Lazy Dev (Vidit Patil)**
 
-**Stop AI dependency hallucinations from reaching your lockfile.**
+**Stop AI dependency hallucinations and slopsquatting before they reach your lockfile.**
 
-AI models (Claude, Cursor, Copilot, ChatGPT) confidently invent package names that do not exist on package registries. Attackers crawl public repos for these 404 imports, register them with malicious payloads, and wait for developers or CI runners to run `npm install`, `pip install`, or `cargo build`.
+AI code assistants (Claude, Cursor, Copilot, ChatGPT) confidently invent packages that do not exist on public registries. Attackers crawl public commits and PRs for these 404 imports, register them with malicious payloads, and wait for developers or CI runners to execute `npm install`, `pip install`, or `cargo build`.
 
-`slop-deps` statically extracts every package import from source code and manifests, verifying each one directly against upstream registries before it ever enters a lockfile. Zero runtime dependencies. Sub-second execution.
+`slop-deps` statically inspects your source code and manifests, verifying every imported dependency directly against upstream registries and local popularity corpuses **before** any installation script runs. 
+
+Zero external dependencies. Sub-second execution. Fail-closed security.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
+[![Tests: 79 Passing](https://img.shields.io/badge/Tests-79%2F79%20PASS-brightgreen.svg)](test/run-tests.js)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![Platform: Cross--Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-informational.svg)](installer.iss)
 
 ---
 
-## Install & Access
+## ⚡ Quick Demo
 
-### Option 1 — Windows Interactive Installer (Recommended)
+```text
+$ slopdeps
 
-Download and run `slopdeps-installer.exe` from [releases](https://github.com/viditx/slop-deps/releases) or the marketing site:
-- Installs standalone binary and zero-dependency runtime to `%LOCALAPPDATA%\Programs\slop-deps`.
-- Collision-free Windows User PATH registration (`slopdeps.cmd`, `slopdeps.ps1`).
-- Clean uninstaller included with safe PATH entry cleanup.
+  slop-deps v1.0.0-alpha — Sentinel against AI dependency hallucinations
+  Scanning target: C:\dev\my-app (84 files, 142 package references)
 
-### Option 2 — From Source (Private Beta)
+  CRITICAL  fake-jwt-decoder-super-auth-xyz  (npm)
+            src/auth/jwt.ts:4
+            Package DOES NOT EXIST on npm. Potential AI hallucination trap!
+            Did you mean 'jsonwebtoken'?
 
-If you have repository access during the private beta:
+  WARN      reqeusts  (pypi)
+            services/api.py:12
+            Typosquat risk: name is 1 edit from 'requests'. Inspect before installing.
+
+  VERIFIED  @uber/internal-telemetry  (npm)
+            src/telemetry.ts:2
+            Private enterprise scope '@uber' (configured via .npmrc).
+
+  VERIFIED  react  (npm)  [bundled corpus]
+  VERIFIED  torch  (pypi) [bundled corpus]
+
+  Summary: 2 flagged (1 CRITICAL, 1 WARN), 140 clean. 
+  Elapsed: 142ms. Exit code: 2
+```
+
+---
+
+## Why Pre-Lockfile Verification Matters
+
+Security tools like `npm audit`, `pip-audit`, or Snyk run **after** a lockfile is generated or packages are installed. 
+
+This creates a fatal blindspot:
+1. An LLM outputs code containing `import { magic } from 'react-magic-super-spring-xyz'`.
+2. The developer or script adds it and runs `npm install`.
+3. **npm immediately executes the package's `preinstall` / `postinstall` lifecycle hook**.
+4. The attacker's payload executes arbitrary code, exfiltrating `.env` secrets or SSH keys before any traditional audit tool can inspect the tree.
+
+**`slop-deps` shifts detection to pre-install time:** it analyzes raw `.js`, `.ts`, `.py`, `.rs`, and uncommitted manifests to kill hallucinations at the gate.
+
+---
+
+## The 4-Layer Defense Architecture
+
+| Layer | Component | How It Works |
+|:---|:---|:---|
+| **1. Multi-Language Lexical Extractor** | Pure Node AST/Lexer | Scans JS/TS, Python, and Rust source code + manifests without external parsers. Supports static string concatenation, dynamic imports, JSX isolation, and type-only imports. |
+| **2. Bundled Popularity Corpus** | 4,179 Curated Packages | Zero-network verification for top ecosystem giants (React, Lodash, NumPy, PyTorch, Serde). Answers popular imports instantly with zero telemetry. |
+| **3. Upstream Registry Probe & Cache** | Direct HTTPS Probes | Direct HEAD/GET checks to `registry.npmjs.org`, `pypi.org`, and `crates.io` with persistent TTL disk caching to avoid rate limits. |
+| **4. Offline Typosquat Engine** | Damerau-Levenshtein + Homoglyphs | Detects visual lookalike characters, confusable homoglyphs, and single-edit squatting traps targeting popular packages (`reqeusts` → `requests`). |
+
+---
+
+## Installation & Distribution
+
+### Option 1 — Windows Standalone Installer (Recommended)
+
+Download `slopdeps-installer.exe` from [releases](https://github.com/viditx/slop-deps/releases) or the marketing site:
+- Standalone launcher bundled into `%LOCALAPPDATA%\Programs\slop-deps`.
+- Collision-free Windows User PATH registration (`slopdeps.cmd`, `slopdeps.ps1`, `slopdeps.exe`).
+- Clean uninstaller included with safe PATH cleanup.
+
+### Option 2 — From Source / Private Beta
 
 ```bash
 git clone https://github.com/viditx/slop-deps.git
@@ -34,57 +91,39 @@ npm link
 slopdeps
 ```
 
-*(Note: Package is in private distribution. Public npm publishing via `npx slop-deps` will be available at general public launch — see [DISTRIBUTION.md](DISTRIBUTION.md).)*
+*(Note: Public npm publishing via `npx slop-deps` will unlock at public launch — see [DISTRIBUTION.md](DISTRIBUTION.md).)*
 
 ### Option 3 — GitHub Action (CI/CD)
 
-Add to your GitHub Actions workflow:
+Block hallucinated PRs directly in GitHub Actions:
 
 ```yaml
-- uses: viditx/slop-deps@main
-  with:
-    strict: 'true'
+name: AI Dependency Guard
+on: [push, pull_request]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: viditx/slop-deps@main
+        with:
+          strict: 'true'
+          sarif: 'true'
 ```
 
-
 ---
 
-## The 3-Layer Defense Matrix
-
-| Layer | What it is | Fixes |
-|---|---|---|
-| **1. Multi-Manifest AST Extractor** | Zero-dependency parser for JS, TS, Python, and Rust source files + manifests | Phantom imports in code before `package.json` or `requirements.txt` is updated |
-| **2. Upstream Registry Probe** | Direct HTTPS probe to npm, PyPI, and Crates.io with local verdict TTL cache | Hallucinated packages that do not exist on public registries |
-| **3. Offline Typosquat Engine** | Damerau-Levenshtein distance + visual lookalike homoglyph corpus matching | Attackers registering subtle typos of popular packages (`reqeusts` -> `requests`) |
-
----
-
-## Verification Tiers
-
-| Level | Meaning | Action |
-|:---|:---|:---|
-| **CRITICAL** | Package does not exist on npm, PyPI, or Crates.io. | Remove or replace immediately. |
-| **WARN** | Package name closely mimics an established registry giant (typosquat). | Verify publisher identity and spellings. |
-| **CLEAN** | Verified established package on the registry. | Safe to install. |
-
-### Standard Library & Built-in Modules
-
-Standard library and runtime modules (such as Python's `os`, `sys`, `json`, `pathlib`, or Node's `node:fs`, `path`) are recognized directly by `src/builtins.js`:
-- **CLI Engine:** Automatically recognized and excluded from external registry lookups, ensuring zero network calls and clean passes.
-- **Web Inspector:** Rendered explicitly as `VERIFIED` with reason `standard library module` (green badge), confirming to developers that builtins are recognized without triggering false hallucination alerts.
-
----
-
-## CLI Usage
+## CLI Command Reference
 
 ```bash
 # Scan current repository
 slopdeps
 
-# Scan a specific directory or monorepo package
+# Scan a specific directory or monorepo workspace
 slopdeps ./frontend
 
-# Scan only git-staged files (ideal for pre-commit hooks)
+# Fast pre-commit mode: scan only git-staged files
 slopdeps --staged
 
 # Air-gapped / privacy mode (local corpus & cache only, zero network)
@@ -93,79 +132,107 @@ slopdeps --offline
 # AI-assisted auto-fix for flagged imports (BYOK)
 slopdeps --fix
 
-# Machine-readable output for CI/CD
+# Machine-readable output for CI/CD pipelines
 slopdeps --json
 slopdeps --sarif > results.sarif
 
-# Fail-closed strict mode (exit code 2 on warnings)
+# Fail-closed strict mode (exit code 2 on warnings or errors)
 slopdeps --strict
 ```
 
-### Complete CLI Flags Reference
+### Complete CLI Flags
 
-| Option | Flag | Description |
-|---|---|---|
-| **Target Directory** | `-d, --dir <path>` | Specify custom project directory to scan (default: current working directory). |
-| **Git Staged** | `--staged` | Fast pre-commit mode: scans only files currently staged in git index. |
-| **Air-gapped Mode** | `--offline, --private` | Zero outbound network calls; relies on bundled popular corpus + local TTL cache. |
-| **AI Auto-Repair** | `--fix` | BYOK AI-assisted import repair with safe `.slop-deps.bak` backups. |
-| **Trust Config** | `--trust-config` | Load custom repository configuration from `.slopdepsrc.json`. |
-| **Clear Cache** | `--clear-cache` | Wipe the local registry verdict cache and exit. |
-| **Corpus Update** | `--update-corpus` | Refresh the auto-generated typosquat corpus from live upstream registries. |
-| **Machine JSON** | `--json` | Stream findings and statistics as raw JSON for CI/CD runners. |
-| **SARIF 2.1.0** | `--sarif` | Emit SARIF 2.1.0 payload for native GitHub Code Scanning integration. |
-| **Fail-Closed** | `--strict` | Exit code 2 on suspicious packages, typosquats, or network errors. |
-| **Version** | `-v, --version` | Print installed engine version. |
-| **Help** | `-h, --help` | Display usage help and exit codes. |
-
+| Flag | Name | Purpose |
+|:---|:---|:---|
+| `-d, --dir <path>` | Target Directory | Specify directory to scan (default: current working directory). |
+| `--staged` | Git Staged Mode | Fast pre-commit scanner: only checks files currently staged in git. |
+| `--offline, --private` | Air-Gapped Mode | Zero outbound network calls; verifies via bundled corpus + local cache. |
+| `--fix` | AI Auto-Repair | BYOK AI-assisted import repair with atomic `.slop-deps.bak` backups and secondary hallucination guards. |
+| `--trust-config` | Config Override | Load custom project rules from `.slopdepsrc.json`. |
+| `--clear-cache` | Wipe Cache | Clear local registry verdict cache. |
+| `--update-corpus` | Refresh Corpus | Fetch fresh top-popularity package lists from upstream registries. |
+| `--json` | JSON Stream | Output structured findings and telemetry as JSON. |
+| `--sarif` | SARIF 2.1.0 | Emit SARIF payload for native GitHub Code Scanning integration. |
+| `--strict` | Fail-Closed Gate | Exit with code 2 on critical findings, typosquats, or network errors. |
+| `-v, --version` | Version Info | Print installed engine version (`v1.0.0-alpha`). |
+| `-h, --help` | Help Menu | Display full usage instructions. |
 
 ---
 
-## Repository Layout
+## Enterprise & Monorepo Features
+
+### 🏢 Automatic Private Scope Discovery
+Corporate monorepos often use internal packages (`@mycorp/auth`, `@internal/logger`) that do not exist on public npmjs.org. `slop-deps` eliminates false 404s via 4 automatic resolution channels:
+1. **`.npmrc` Auto-Discovery:** Automatically scans `.npmrc` for `@scope:registry=...` lines.
+2. **Root Package Inheritance:** If the root `package.json` is scoped (e.g. `@mycorp/app`), all `@mycorp/*` packages are recognized as internal.
+3. **`.slopdepsrc.json`:** Add custom enterprise scopes:
+   ```json
+   {
+     "privateScopes": ["@mycorp", "@internal"],
+     "ignoreScopes": ["@legacy"]
+   }
+   ```
+4. **Environment Variables:** Set `SLOP_DEPS_PRIVATE_SCOPES=@mycorp,@internal`.
+
+### 🛡️ Secondary Hallucination Guard (`--fix`)
+When running `--fix` with BYOK AI models, `slop-deps` enforces a strict mathematical safety gate:
+- AI-proposed replacements are statically extracted and verified against registries/corpuses **before** anything is written to disk.
+- If the AI model invents another non-existent package as a replacement, `slop-deps` rejects the fix with an explicit secondary hallucination warning and preserves user code byte-for-byte.
+
+---
+
+## Repository Architecture
 
 ```text
 slop-deps/
-├── README.md               ← you are here
-├── package.json            ← zero external dependencies
-├── action.yml              ← GitHub Action integration
-├── DISTRIBUTION.md         ← private beta architecture & release posture
-├── PRIVACY.md              ← privacy audit & zero-telemetry guarantee
+├── README.md               ← Documentation & quickstart
+├── package.json            ← Zero external runtime dependencies
+├── action.yml              ← GitHub Action definition
+├── DISTRIBUTION.md         ← Distribution & access policies
+├── PRIVACY.md              ← Zero-telemetry & air-gap guarantees
 ├── bin/
-│   └── slop-deps.js        ← standalone CLI runner
-├── src/                    ← core verification engine (~3,180 lines)
-│   ├── index.js            ← directory traversal & extractor coordinator
-│   ├── reporter.js         ← clean compiler-grade diagnostics
-│   ├── sarif.js            ← SARIF 2.1.0 generator for GitHub Code Scanning
-│   ├── builtins.js         ← Node.js, Python, and OS built-in modules
-│   ├── typosquat.js        ← Damerau-Levenshtein & lookalike matcher
-│   ├── pypi-map.js         ← Python import to distribution mappings
-│   ├── fixer.js            ← BYOK AI automated hallucination fixer
-│   ├── ai.js               ← OpenAI / Anthropic / local LLM provider client
-│   ├── update-corpus.js    ← popular packages corpus update utility
-│   ├── corpus.generated.js ← bundled top-tier popularity corpus (npm, PyPI)
-│   ├── extractors/         ← pure JS/TS, Python, and Rust parsers
-│   └── registries/         ← npm, PyPI, Crates.io probes & TTL cache
-├── installer.iss           ← Inno Setup 6 interactive installer script
-├── demo/                   ← test fixtures with intentional hallucinations
+│   ├── slop-deps.js        ← Standalone Node.js CLI runner
+│   └── slopdeps.exe        ← Native Windows launcher stub
+├── src/                    ← Core verification engine
+│   ├── index.js            ← Directory traversal & multi-ecosystem coordinator
+│   ├── reporter.js         ← Compiler-grade terminal diagnostics
+│   ├── sarif.js            ← SARIF 2.1.0 generator for GitHub Security tab
+│   ├── builtins.js         ← Node.js, Python, and Rust standard library modules
+│   ├── typosquat.js        ← Damerau-Levenshtein distance & confusable matcher
+│   ├── pypi-map.js         ← Python import-to-distribution resolution mappings
+│   ├── fixer.js            ← AI repair engine with secondary hallucination guards
+│   ├── ai.js               ← BYOK multi-provider client (Gemini / OpenAI / Anthropic)
+│   ├── corpus.generated.js ← Bundled popularity corpus (4,179 packages)
+│   ├── extractors/         ← Pure JS/TS, Python, and Rust AST/Lexer extractors
+│   └── registries/         ← npm, PyPI, Crates.io probes & local TTL cache
+├── installer.iss           ← Inno Setup 6 compiler configuration
 ├── test/
-│   └── run-tests.js        ← 61 deterministic assertion suites
-└── site/                   ← marketing landing page & client-side scanner
+│   └── run-tests.js        ← 79 deterministic automated regression assertions
+└── site/                   ← Morpho WebGL landing page & client-side scanner
 ```
 
 ---
 
-## Development & Releases
+## Test Suite & Verification
 
-### Cutting Release Snapshots
-
-To guarantee clean distribution archives without uncommitted drift, transient build outputs, or debug artifacts (such as `.pdb` files), all release snapshots must be created directly from git:
+The test suite covers 79 deterministic test assertions across CLI arguments, parser edge cases, AST string concatenations, private scope resolutions, and red-team injection attempts:
 
 ```bash
-# Export clean snapshot matching HEAD
-git archive --format=zip -o slop-deps-v1.0.0-alpha.zip HEAD
+# Run full regression suite (CLI + Site integration)
+node test/run-tests.js
 ```
 
-Every snapshot produced by `git archive` contains all tracked core engine sources, marketing site source files, self-hosted fonts, and verified installer assets, and is guaranteed to pass full clean-build verification (`npm ci && npm run build` in `site/morpho`).
+```text
+🧪 Running slop-deps test suite...
+  ✔ PASS: src/ contains zero external dependencies
+  ✔ PASS: All 5 hallucinated fixtures caught across JS, Python, Rust, manifests
+  ...
+  ✔ PASS: static string concatenation in import/require resolved cleanly (Test 77)
+  ✔ PASS: enterprise private scopes in .npmrc verified without false 404s (Test 78)
+  ✔ PASS: fixer secondary hallucination guard prevents circular AI traps (Test 79)
+
+🎉 All 79 test assertions passed successfully!
+```
 
 ---
 
