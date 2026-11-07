@@ -7,7 +7,7 @@ import { printBanner, printResults } from '../src/reporter.js';
 import { toSarif } from '../src/sarif.js';
 import { updateCorpus } from '../src/update-corpus.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.0.0-alpha';
 
 const FIX_SYSTEM = `You fix broken package imports in source code. The scanner found imports referencing packages that do not exist on the registry (AI hallucinations) or that typosquat popular packages. For each finding, return the corrected import line: keep the language, style and named bindings identical, only change the package specifier to the real package the code clearly intended. If no real package plausibly matches, set "new" to null. Respond ONLY with a JSON array, no prose, no code fences.`;
 

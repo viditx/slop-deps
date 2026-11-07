@@ -3,7 +3,7 @@ import { BookOpen, Terminal } from 'lucide-react';
 import { CatState, PixelSittingCat } from './PixelSittingCat';
 
 const GITHUB_REPO_URL = 'https://github.com/viditx/slop-deps';
-const VERSION = 'v1.4.0';
+const VERSION = 'v1.0.0-alpha';
 
 type Tab = 'overview' | 'threats' | 'security';
 

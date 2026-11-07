@@ -162,7 +162,7 @@ To guarantee clean distribution archives without uncommitted drift, transient bu
 
 ```bash
 # Export clean snapshot matching HEAD
-git archive --format=zip -o slop-deps-v1.4.0.zip HEAD
+git archive --format=zip -o slop-deps-v1.0.0-alpha.zip HEAD
 ```
 
 Every snapshot produced by `git archive` contains all tracked core engine sources, marketing site source files, self-hosted fonts, and verified installer assets, and is guaranteed to pass full clean-build verification (`npm ci && npm run build` in `site/morpho`).

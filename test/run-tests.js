@@ -323,7 +323,7 @@ async function run() {
 
   const vResult = spawnSync(process.execPath, [binPath, '--version'], { encoding: 'utf-8' });
   assert.equal(vResult.status, 0, '--version must exit 0');
-  assert.ok(vResult.stdout.includes('1.4.0'), '--version must output version');
+  assert.ok(vResult.stdout.includes('1.0.0-alpha'), '--version must output version');
 
   const invResult = spawnSync(process.execPath, [binPath, '--unknown-flag'], { encoding: 'utf-8' });
   assert.equal(invResult.status, 2, 'Unrecognized option must exit 2');

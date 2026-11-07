@@ -60,7 +60,7 @@ export function toSarif(findings) {
           driver: {
             name: 'slop-deps',
             informationUri: 'https://github.com/viditx/slop-deps',
-            version: '1.4.0',
+            version: '1.0.0-alpha',
             rules: RULES.filter(r => usedRules.has(r.id)).map(r => ({
               id: r.id,
               shortDescription: { text: r.short },

@@ -14,7 +14,7 @@ const c = isColorSupported
   : Object.fromEntries(Object.keys(RAW).map(k => [k, '']));
 
 export function printBanner() {
-  console.log(`${c.dim}slop-deps v1.4.0${c.reset}\n`);
+  console.log(`${c.dim}slop-deps v1.0.0-alpha${c.reset}\n`);
 }
 
 export function printResults(findings, stats) {

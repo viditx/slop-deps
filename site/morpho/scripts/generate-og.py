@@ -52,7 +52,7 @@ draw.line([50, 85, WIDTH - 50, 85], fill=BORDER_COLOR, width=1)
 # 4. Main Hero Typography: SLOP-DEPS
 draw.text((58, 142), "SLOP-DEPS", fill=(20, 35, 30), font=font_bold)
 draw.text((60, 140), "SLOP-DEPS", fill=TEXT_WHITE, font=font_bold)
-draw.text((450, 155), "v1.4.0", fill=EMERALD, font=font_subtitle)
+draw.text((450, 155), "v1.0.0-alpha", fill=EMERALD, font=font_subtitle)
 
 # Tagline & description
 draw.text((60, 230), "Zero-dependency slopsquatting scanner.", fill=TEXT_WHITE, font=font_subtitle)
