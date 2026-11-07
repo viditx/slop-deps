@@ -2,7 +2,6 @@
 
 import path from 'path';
 import os from 'os';
-import { spawn } from 'child_process';
 import { scanDirectory, scanStagedFiles } from '../src/index.js';
 import { printBanner, printResults } from '../src/reporter.js';
 import { toSarif } from '../src/sarif.js';
@@ -57,7 +56,6 @@ const isOffline = args.includes('--offline') || args.includes('--private');
 const isClearCache = args.includes('--clear-cache');
 const isUpdateCorpus = args.includes('--update-corpus');
 const isFix = args.includes('--fix');
-const uiIndex = args.findIndex(a => a === '--ui');
 let explicitDir = false;
 let targetDir = process.cwd();
 
