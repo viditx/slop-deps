@@ -1,10 +1,19 @@
 // Verify L-1 (Host header guard) + regression: traversal still blocked, dashboard E2E still works
-import { startDashboardServer } from '../../slop-deps-fixed/src/server.js';
+// Note: --ui dashboard server was removed from v1.4.0 (Card F-07).
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
-import { fileURLToPath } from 'node:url';
-const __FIXED__DIR__ = fileURLToPath(new URL('../../slop-deps-fixed', import.meta.url));
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const FIXED = fileURLToPath(new URL('../..', import.meta.url));
+const serverFile = path.join(FIXED, 'src', 'server.js');
+
+if (!fs.existsSync(serverFile)) {
+  console.log('SKIP: --ui dashboard server was intentionally stripped from v1.4.0 (Card F-07).');
+  process.exit(0);
+}
+
+const os = (await import('os')).default;
+const { startDashboardServer } = await import(pathToFileURL(serverFile).href);
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fix-verify-'));
 fs.writeFileSync(path.join(root, 'app.js'), "import lodash from 'lodash';\nimport reqeusts from 'reqeusts';\n");

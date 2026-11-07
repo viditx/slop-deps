@@ -1,9 +1,9 @@
 // Differential test: ORIGINAL isInsideJsxOrBlock (from git HEAD) vs the new
 // single-pass buildJsxContexts. Verdicts must be 100% identical.
 import { execSync } from 'child_process';
-import { extractJsImports } from '../../slop-deps-fixed/src/extractors/js-ts.js';
+import { extractJsImports } from '../../src/extractors/js-ts.js';
 import { fileURLToPath } from 'node:url';
-const __FIXED__DIR__ = fileURLToPath(new URL('../../slop-deps-fixed', import.meta.url));
+const __FIXED__DIR__ = fileURLToPath(new URL('../..', import.meta.url));
 
 // --- original implementation, verbatim from git HEAD ---
 const TS_PRIMITIVES = new Set(['void', 'string', 'number', 'boolean', 'any', 'never', 'unknown', 'symbol', 'bigint', 'object']);

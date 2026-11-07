@@ -2,7 +2,7 @@
 // original vs single-pass must agree 100%.
 import fs from 'fs';
 import { fileURLToPath as __futp } from 'node:url';
-const __FIXED__DIR__ = __futp(new URL('../../slop-deps-fixed', import.meta.url));
+const __FIXED__DIR__ = __futp(new URL('../..', import.meta.url));
 
 const src = fs.readFileSync(__FIXED__DIR__ + '/src/extractors/js-ts.js', 'utf-8').replace(/^export /gm, '');
 const probe = new Function(src + '\nreturn { PATTERNS, maskStrings, cleanPackageName, unmask, buildJsxContexts, isInsideJsxOrBlockFromSnapshot };')();
