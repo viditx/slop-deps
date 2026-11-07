@@ -15,11 +15,11 @@ DefaultDirName={localappdata}\Programs\slop-deps
 DisableDirPage=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-OutputDir=C:\Users\user\Desktop
+OutputDir=dist
 OutputBaseFilename=installer
-SetupIconFile=C:\Users\user\Desktop\Work\slop-deps\slopdeps.ico
-WizardImageFile=C:\Users\user\Desktop\Work\slop-deps\installer-banner.bmp
-WizardSmallImageFile=C:\Users\user\Desktop\Work\slop-deps\installer-small.bmp
+SetupIconFile=slopdeps.ico
+WizardImageFile=installer-banner.bmp
+WizardSmallImageFile=installer-small.bmp
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -31,12 +31,12 @@ UninstallDisplayIcon={app}\bin\slopdeps.exe
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "C:\Users\user\Desktop\Work\slop-deps\bin\*"; DestDir: "{app}\bin"; Excludes: "*.pdb,installer.exe,slopdeps-installer.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "C:\Users\user\Desktop\Work\slop-deps\src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "C:\Users\user\Desktop\Work\slop-deps\package.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\user\Desktop\Work\slop-deps\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\user\Desktop\Work\slop-deps\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\user\Desktop\Work\slop-deps\PRIVACY.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "bin\*"; DestDir: "{app}\bin"; Excludes: "*.pdb,installer.exe,slopdeps-installer.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "package.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "PRIVACY.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
@@ -254,23 +254,50 @@ begin
   end;
 end;
 
+function RemoveDirFromPath(const PathStr, DirToRemove: string): string;
+var
+  Target, Rest, Part, ResultPath: string;
+  P: Integer;
+begin
+  Target := UpperCase(Trim(DirToRemove));
+  Rest := PathStr;
+  ResultPath := '';
+  while Length(Rest) > 0 do
+  begin
+    P := Pos(';', Rest);
+    if P > 0 then
+    begin
+      Part := Trim(Copy(Rest, 1, P - 1));
+      Rest := Copy(Rest, P + 1, Length(Rest) - P);
+    end
+    else
+    begin
+      Part := Trim(Rest);
+      Rest := '';
+    end;
+    if (Length(Part) > 0) and (UpperCase(Part) <> Target) then
+    begin
+      if Length(ResultPath) > 0 then
+        ResultPath := ResultPath + ';' + Part
+      else
+        ResultPath := Part;
+    end;
+  end;
+  Result := ResultPath;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   BinDir, OrigPath, NewPath: string;
-  P: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
     BinDir := ExpandConstant('{app}\bin');
     if RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', OrigPath) then
     begin
-      P := Pos(';' + UpperCase(BinDir), ';' + UpperCase(OrigPath));
-      if P > 0 then
+      NewPath := RemoveDirFromPath(OrigPath, BinDir);
+      if NewPath <> OrigPath then
       begin
-        NewPath := OrigPath;
-        StringChangeEx(NewPath, ';' + BinDir, '', True);
-        StringChangeEx(NewPath, BinDir + ';', '', True);
-        StringChangeEx(NewPath, BinDir, '', True);
         RegWriteStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', NewPath);
       end;
     end;
