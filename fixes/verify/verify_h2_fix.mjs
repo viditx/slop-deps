@@ -1,5 +1,9 @@
 // H-2 verification: run the REAL (fixed) site scanner on a Python file with stdlib imports
-import { inspectDroppedFileAsync } from '../../slop-deps-fixed/site/morpho/src/utils/fileInspector.ts';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const __REPO_DIR__ = fileURLToPath(new URL('../..', import.meta.url));
+const { inspectDroppedFileAsync } = await import(`file:///${path.join(__REPO_DIR__, 'site/morpho/src/utils/fileInspector.ts').replace(/\\/g, '/')}`);
 
 const pySrc = `import os
 import sys
@@ -8,8 +12,6 @@ import re
 from pathlib import Path
 import requests
 import fakepkg_torch_magic_404
-import { fileURLToPath } from 'node:url';
-const __FIXED__DIR__ = fileURLToPath(new URL('../../slop-deps-fixed', import.meta.url));
 `;
 
 const record = await inspectDroppedFileAsync('app.py', pySrc.length, pySrc, 'verify-1');
