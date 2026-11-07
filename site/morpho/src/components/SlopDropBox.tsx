@@ -980,11 +980,11 @@ export function SlopDropBox() {
                                 >
                                   ! {flaggedPackages.length} flagged
                                 </span>
-                                <span className="mx-2 text-[#F5F5F0]/30">·</span>
+                                <span className="mx-2 text-[#F5F5F0]/60">·</span>
                                 <span>
                                   ? {uncheckedPackages.length} unchecked
                                 </span>
-                                <span className="mx-2 text-[#F5F5F0]/30">·</span>
+                                <span className="mx-2 text-[#F5F5F0]/60">·</span>
                                 <span>
                                   ✓ {verifiedPackages.length} verified
                                 </span>
@@ -1016,7 +1016,7 @@ export function SlopDropBox() {
                                           <span className="font-bold text-[#FB7185]">
                                             {pkg.name}
                                           </span>
-                                          <span className="text-[#F5F5F0]/35">
+                                          <span className="text-[#F5F5F0]/65">
                                             ·
                                           </span>
                                           <span className="text-[#F5F5F0]/85">
@@ -1027,7 +1027,7 @@ export function SlopDropBox() {
                                           </span>
                                           {pkg.suggestion && (
                                             <>
-                                              <span className="text-[#F5F5F0]/35">
+                                              <span className="text-[#F5F5F0]/65">
                                                 ·
                                               </span>
                                               <span
@@ -1092,10 +1092,10 @@ export function SlopDropBox() {
                                         <span className="text-[#F5F5F0]">
                                           {pkg.name}
                                         </span>
-                                        <span className="text-[#F5F5F0]/35">
+                                        <span className="text-[#F5F5F0]/65">
                                           ·
                                         </span>
-                                        <span className="text-[#F5F5F0]/55">
+                                        <span className="text-[#F5F5F0]/65">
                                           {pkg.reason || 'lookup failed'}
                                         </span>
                                       </div>
@@ -1150,7 +1150,7 @@ export function SlopDropBox() {
                                         >
                                           <span>
                                             ✓ {pkg.name}{' '}
-                                            <span className="text-[#F5F5F0]/35">
+                                            <span className="text-[#F5F5F0]/65">
                                               {pkg.version}
                                             </span>
                                           </span>

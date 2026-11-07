@@ -118,3 +118,5 @@ export function resolvePyPiDistributionName(importName) {
 
   return importName;
 }
+
+export const normalizePypiName = resolvePyPiDistributionName;

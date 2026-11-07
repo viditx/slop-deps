@@ -962,11 +962,11 @@ export function SlopDepsCanvas() {
             <span className="text-[#F5F5F0] font-bold">
               Alpha (now): CLI + drop-box demo
             </span>
-            <span className="text-[#F5F5F0]/30" aria-hidden="true">
+            <span className="text-[#F5F5F0]/60" aria-hidden="true">
               /
             </span>
             <span>Beta: autonomous mode (coming)</span>
-            <span className="text-[#F5F5F0]/30" aria-hidden="true">
+            <span className="text-[#F5F5F0]/60" aria-hidden="true">
               /
             </span>
             <span>Release: coming</span>
@@ -1028,7 +1028,7 @@ export function SlopDepsCanvas() {
       >
         <div className="flex items-center gap-2">
           <span className="text-[#F5F5F0] font-bold">Vidit Patil</span>
-          <span className="text-[#F5F5F0]/30">·</span>
+          <span className="text-[#F5F5F0]/60">·</span>
           <a
             href="https://github.com/viditx"
             target="_blank"
@@ -1037,12 +1037,12 @@ export function SlopDepsCanvas() {
           >
             @viditx
           </a>
-          <span className="text-[#F5F5F0]/30">·</span>
+          <span className="text-[#F5F5F0]/60">·</span>
           <span>MIT © 2026</span>
         </div>
 
         <div className="flex items-center gap-4">
-          <span className="text-[#F5F5F0]/40 text-[11px] hidden sm:inline">
+          <span className="text-[#F5F5F0]/65 text-[11px] hidden sm:inline">
             zero-dependency supply-chain sentinel
           </span>
           <a
@@ -1058,16 +1058,22 @@ export function SlopDepsCanvas() {
         </div>
       </footer>
 
-      {/* Skippable Intro Indicator */}
+      {/* Preloader Telemetry & Skippable Intro Indicator (STORYBOARD_SPEC §1) */}
       {uiPhase !== 'main' && (
-        <button
-          type="button"
-          data-testid="preloader-telemetry"
-          onClick={() => skipIntroRef.current?.()}
-          className="fixed bottom-6 right-8 z-30 font-terminal text-xs tracking-[0.12em] text-[#EAEBE5]/65 hover:text-[#F5F5F0] cursor-pointer"
-        >
-          initializing · click or press any key to skip
-        </button>
+        <div className="fixed bottom-6 right-8 z-30 flex items-center gap-3">
+          <span className="font-terminal text-xs tracking-[0.12em] text-[#EAEBE5]/70">
+            connecting....
+          </span>
+          <span className="text-[#EAEBE5]/40">·</span>
+          <button
+            type="button"
+            data-testid="preloader-telemetry"
+            onClick={() => skipIntroRef.current?.()}
+            className="font-terminal text-xs tracking-[0.12em] text-[#EAEBE5]/70 hover:text-[#F5F5F0] cursor-pointer underline decoration-dotted"
+          >
+            click to skip
+          </button>
+        </div>
       )}
     </div>
   );

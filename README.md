@@ -77,6 +77,9 @@ slopdeps --staged
 # Air-gapped / privacy mode (local corpus & cache only, zero network)
 slopdeps --offline
 
+# AI-assisted auto-fix for flagged imports (BYOK)
+slopdeps --fix
+
 # Machine-readable output for CI/CD
 slopdeps --json
 slopdeps --sarif > results.sarif
@@ -84,6 +87,24 @@ slopdeps --sarif > results.sarif
 # Fail-closed strict mode (exit code 2 on warnings)
 slopdeps --strict
 ```
+
+### Complete CLI Flags Reference
+
+| Option | Flag | Description |
+|---|---|---|
+| **Target Directory** | `-d, --dir <path>` | Specify custom project directory to scan (default: current working directory). |
+| **Git Staged** | `--staged` | Fast pre-commit mode: scans only files currently staged in git index. |
+| **Air-gapped Mode** | `--offline, --private` | Zero outbound network calls; relies on bundled popular corpus + local TTL cache. |
+| **AI Auto-Repair** | `--fix` | BYOK AI-assisted import repair with safe `.slop-deps.bak` backups. |
+| **Trust Config** | `--trust-config` | Load custom repository configuration from `.slopdepsrc.json`. |
+| **Clear Cache** | `--clear-cache` | Wipe the local registry verdict cache and exit. |
+| **Corpus Update** | `--update-corpus` | Refresh the auto-generated typosquat corpus from live upstream registries. |
+| **Machine JSON** | `--json` | Stream findings and statistics as raw JSON for CI/CD runners. |
+| **SARIF 2.1.0** | `--sarif` | Emit SARIF 2.1.0 payload for native GitHub Code Scanning integration. |
+| **Fail-Closed** | `--strict` | Exit code 2 on suspicious packages, typosquats, or network errors. |
+| **Version** | `-v, --version` | Print installed engine version. |
+| **Help** | `-h, --help` | Display usage help and exit codes. |
+
 
 ---
 

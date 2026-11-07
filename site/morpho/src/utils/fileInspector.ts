@@ -313,7 +313,7 @@ export function extractManifestDependencies(
 
   // 4. PyPI pyproject.toml
   if (lower.endsWith('pyproject.toml')) {
-    return extractPyProjectToml(rawContent) as Array<{
+    return extractPyProjectToml(rawContent) as unknown as Array<{
       name: string;
       version: string;
       ecosystem: 'pypi';
@@ -325,7 +325,7 @@ export function extractManifestDependencies(
     lower.endsWith('requirements.txt') ||
     /requirements.*\.txt$/.test(lower)
   ) {
-    return extractRequirementsTxt(rawContent) as Array<{
+    return extractRequirementsTxt(rawContent) as unknown as Array<{
       name: string;
       version: string;
       ecosystem: 'pypi';
@@ -353,7 +353,7 @@ export function extractManifestDependencies(
 
   // 7. Rust Cargo.toml
   if (lower.endsWith('cargo.toml')) {
-    return extractCargoToml(rawContent) as Array<{
+    return extractCargoToml(rawContent) as unknown as Array<{
       name: string;
       version: string;
       ecosystem: 'crates';

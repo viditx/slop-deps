@@ -1,129 +1,258 @@
-// Pure ESM typosquat detection using Damerau-Levenshtein distance & delimiter normalization (zero Node builtin imports)
-import { normalizePypiName } from './pypi-map.js';
+// Typosquat detection engine — bundled popular-package corpus, confusable-character
+// normalization, and edit-distance matching. Zero network, zero dependencies.
 
-function normalizeName(name, ecosystem) {
-  if (!name) return '';
-  const trimmed = String(name).trim().toLowerCase();
-  if (ecosystem === 'pypi') {
-    return normalizePypiName(trimmed);
+const CONFUSABLES = { '0': 'o', '1': 'l', '3': 'e', '4': 'a', '5': 's', '7': 't', '$': 's' };
+const DIGRAPHS = [['rn', 'm'], ['vv', 'w'], ['cl', 'd'], ['cj', 'g'], ['nn', 'm']];
+
+// Most-installed / most-imitated packages. Typosquats live one or two edits away
+// from these names, so they form the comparison corpus.
+export const NPM_POPULAR = [
+  // frameworks & view
+  'react', 'react-dom', 'react-router', 'react-query', 'preact', 'vue', 'vue-router',
+  'angular', 'svelte', 'solid-js', 'lit', 'alpinejs', 'next', 'nuxt', 'gatsby', 'remix',
+  'jquery', 'jquery-ui', 'bootstrap', 'tailwindcss', 'styled-components', 'emotion',
+  // language & build
+  'typescript', 'tslib', 'webpack', 'webpack-cli', 'vite', 'rollup', 'esbuild', 'gulp',
+  'grunt', 'babel-core', 'babel-loader', 'eslint', 'stylelint', 'prettier', 'postcss',
+  'sass', 'less', 'autoprefixer', 'esbuild', 'swc',
+  // testing
+  'jest', 'mocha', 'chai', 'vitest', 'ava', 'tape', 'karma', 'sinon', 'nock', 'supertest',
+  'nyc', 'c8', 'playwright', 'puppeteer', 'cypress',
+  // utilities
+  'lodash', 'lodash-es', 'underscore', 'ramda', 'rxjs', 'async', 'bluebird', 'classnames',
+  'clsx', 'deepmerge', 'deep-equal', 'uuid', 'nanoid', 'chalk', 'colors', 'kleur',
+  'picocolors', 'debug', 'ms', 'moment', 'moment-timezone', 'dayjs', 'date-fns',
+  'commander', 'yargs', 'minimist', 'inquirer', 'prompts', 'fuse.js', 'marked',
+  'markdown-it', 'highlight.js', 'prismjs',
+  // network & server
+  'express', 'fastify', 'koa', 'connect', 'compression', 'cors', 'helmet', 'morgan',
+  'body-parser', 'multer', 'busboy', 'serve-static', 'http-proxy', 'http-proxy-middleware',
+  'axios', 'node-fetch', 'got', 'superagent', 'request', 'request-promise', 'ws',
+  'socket.io', 'socket.io-client', 'express-session', 'form-data', 'qs', 'query-string',
+  // data & databases
+  'mongoose', 'sequelize', 'typeorm', 'prisma', 'knex', 'mysql', 'mysql2', 'pg',
+  'mongodb', 'redis', 'ioredis', 'elasticsearch', 'graphql', 'apollo-server',
+  // auth & crypto
+  'jsonwebtoken', 'bcrypt', 'bcryptjs', 'passport', 'passport-local', 'passport-oauth2',
+  'crypto-js', 'elliptic', 'md5', 'sha.js', 'cookie-parser', 'oauth',
+  // python-bridge & ai sdk
+  'openai', 'langchain', 'xml2js',
+  // scraping & dom
+  'cheerio', 'jsdom', 'xhr2', 'd3',
+  // linting of content
+  'xss', 'sanitize-html', 'dompurify', 'validator', 'ajv', 'zod', 'yup',
+  // process & env
+  'nodemon', 'pm2', 'concurrently', 'cross-env', 'rimraf', 'glob', 'mkdirp', 'fs-extra',
+  'dotenv', 'config', 'serve', 'http-server', 'live-server', 'ngrok', 'node-cron', 'cron',
+  // mail & misc services
+  'nodemailer', 'stripe', 'twilio', 'aws-sdk',
+  // historically imitated (famous supply-chain incidents)
+  'left-pad', 'ua-parser-js', 'node-ipc', 'coa', 'rc', 'event-stream', 'colors'
+];
+
+export const PYPI_POPULAR = [
+  // http & networking
+  'requests', 'urllib3', 'httpx', 'aiohttp', 'httplib2', 'certifi', 'idna', 'chardet',
+  'requests-oauthlib', 'oauthlib', 'google-auth', 'websockets',
+  // data science
+  'numpy', 'pandas', 'scipy', 'matplotlib', 'seaborn', 'plotly', 'bokeh', 'statsmodels',
+  'networkx', 'sympy', 'xgboost', 'lightgbm', 'joblib', 'dask', 'optuna',
+  // ml & ai
+  'scikit-learn', 'tensorflow', 'torch', 'keras', 'transformers', 'datasets',
+  'accelerate', 'openai', 'anthropic', 'langchain', 'sentence-transformers',
+  'opencv-python', 'pillow', 'pytesseract', 'easyocr',
+  // web frameworks
+  'django', 'djangorestframework', 'flask', 'flask-cors', 'flask-sqlalchemy', 'fastapi',
+  'starlette', 'uvicorn', 'gunicorn', 'tornado', 'bottle', 'werkzeug', 'jinja2',
+  'markupsafe', 'itsdangerous',
+  // databases & queues
+  'sqlalchemy', 'alembic', 'psycopg2-binary', 'pymongo', 'redis', 'celery', 'rq',
+  'dramatiq', 'kombu', 'pyodbc', 'neo4j', 'elasticsearch', 'pyamqp',
+  // dev tooling
+  'pytest', 'pytest-cov', 'pytest-mock', 'black', 'tox', 'ruff', 'mypy', 'isort',
+  'coverage', 'virtualenv', 'pipenv', 'poetry', 'autopep8', 'flake8', 'pre-commit',
+  // cli & ui
+  'click', 'typer', 'rich', 'textual', 'tqdm', 'prompt-toolkit',
+  // parsing & formats
+  'beautifulsoup4', 'lxml', 'pyyaml', 'toml', 'tomli', 'orjson', 'ujson', 'msgpack',
+  'openpyxl', 'xlrd', 'pypdf', 'reportlab', 'fpdf', 'python-docx', 'python-pptx',
+  'protobuf', 'grpcio',
+  // security & crypto
+  'cryptography', 'paramiko', 'pyjwt', 'pynacl', 'pycryptodome', 'certbot',
+  'sentry-sdk', 'prometheus-client',
+  // date & misc
+  'pytz', 'arrow', 'pendulum', 'python-dateutil', 'six', 'python-dotenv', 'attrs',
+  'pydantic', 'marshmallow', 'structlog', 'loguru', 'anyio', 'trio', 'greenlet',
+  'uvloop', 'gevent', 'watchdog', 'supervisor', 'httpie', 'stripe', 'twilio',
+  'sendgrid', 'boto3', 'firebase-admin', 'google-api-python-client',
+  'google-cloud-storage', 'selenium', 'playwright', 'scrapy',
+  // games & media
+  'pygame', 'kivy', 'pyaudio', 'numpy', 'moviepy',
+  // packaging legacy
+  'pip', 'setuptools', 'wheel'
+];
+
+
+export const RUST_POPULAR = [
+  'serde', 'serde_json', 'serde_yaml', 'tokio', 'tokio-util', 'futures', 'async-std',
+  'clap', 'structopt', 'anyhow', 'thiserror', 'eyre', 'log', 'env_logger', 'tracing',
+  'reqwest', 'hyper', 'axum', 'actix-web', 'actix-rt', 'rocket', 'warp',
+  'sqlx', 'diesel', 'sea-orm', 'rusqlite', 'mongodb', 'redis',
+  'rand', 'rand_core', 'uuid', 'chrono', 'time', 'regex', 'itertools',
+  'rayon', 'crossbeam', 'parking_lot', 'once_cell', 'lazy_static', 'bitflags',
+  'bytes', 'byteorder', 'num', 'num-traits', 'num-bigint',
+  'base64', 'hex', 'sha2', 'sha1', 'md5', 'hmac', 'ring', 'rustls', 'openssl',
+  'native-tls', 'webpki', 'jsonwebtoken', 'argon2', 'bcrypt', 'scrypt',
+  'url', 'percent-encoding', 'mime', 'http', 'cookie',
+  'indicatif', 'dialoguer', 'crossterm', 'ratatui', 'termion',
+  'egui', 'eframe', 'iced', 'bevy', 'winit', 'wgpu', 'image', 'ndarray', 'polars',
+  'pyo3', 'neon', 'napi', 'wasm-bindgen', 'web-sys', 'js-sys', 'console_error_panic_hook',
+  'cargo_metadata', 'semver', 'glob', 'walkdir', 'tempfile', 'fs_extra', 'dirs',
+  'tar', 'zip', 'flate2', 'csv', 'ron', 'toml', 'config', 'dotenvy'
+];
+
+const CORPUS = {
+  cargo: [...new Set(RUST_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) })),
+  npm: [...new Set(NPM_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) })),
+  pypi: [...new Set(PYPI_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) }))
+};
+
+const CORPUS_EXACT = {
+  npm: new Set(NPM_POPULAR),
+  pypi: new Set(PYPI_POPULAR),
+  cargo: new Set(RUST_POPULAR)
+};
+
+function normalizeName(name) {
+  let s = name.toLowerCase().replace(/[-_.\s]/g, '');
+  s = s.replace(/[013457$]/g, ch => CONFUSABLES[ch]);
+  for (const [from, to] of DIGRAPHS) {
+    s = s.split(from).join(to);
   }
-  return trimmed;
+  return s;
 }
 
-/**
- * Computes optimal string alignment (Damerau-Levenshtein) distance between two strings,
- * handling single-character insertions, deletions, substitutions, and adjacent transpositions (e.g. lodahs <-> lodash).
- */
-export function damerauLevenshtein(a, b) {
-  const lenA = a.length;
-  const lenB = b.length;
-  if (a === b) return 0;
-  if (lenA === 0) return lenB;
-  if (lenB === 0) return lenA;
-  if (Math.abs(lenA - lenB) > 3) return Math.abs(lenA - lenB);
-
-  const dp = Array.from({ length: lenA + 1 }, () => new Int32Array(lenB + 1));
-
-  for (let i = 0; i <= lenA; i++) dp[i][0] = i;
-  for (let j = 0; j <= lenB; j++) dp[0][j] = j;
-
-  for (let i = 1; i <= lenA; i++) {
-    for (let j = 1; j <= lenB; j++) {
+function editDistance(a, b) {
+  // Damerau-Levenshtein (optimal string alignment): substitutions, insertions,
+  // deletions and adjacent transpositions ('reqeusts' -> 'requests' costs 1).
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev2 = null;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    // fresh row each iteration: reusing buffers makes prev2 alias curr and
+    // curr[0] would corrupt the transposition source two rows back
+    const curr = new Array(n + 1);
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      let best = Math.min(
-        dp[i - 1][j] + 1, // deletion
-        dp[i][j - 1] + 1, // insertion
-        dp[i - 1][j - 1] + cost // substitution
-      );
-      if (
-        i > 1 &&
-        j > 1 &&
-        a[i - 1] === b[j - 2] &&
-        a[i - 2] === b[j - 1]
-      ) {
-        best = Math.min(best, dp[i - 2][j - 2] + 1); // adjacent transposition
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        const twoBack = (prev2 ?? prev)[j - 2] + 1;
+        if (twoBack < curr[j]) curr[j] = twoBack;
       }
-      dp[i][j] = best;
     }
+    prev2 = prev;
+    prev = curr;
   }
-
-  return dp[lenA][lenB];
+  return prev[n];
 }
 
-function getEcosystemList(ecosystem, corpus) {
-  if (!corpus) return [];
-  if (Array.isArray(corpus)) return corpus;
-  const list = corpus[ecosystem] || [];
-  return Array.isArray(list) ? list : [];
-}
-
-export function isPopularPackage(name, ecosystem = 'npm', corpus = null) {
-  const norm = normalizeName(name, ecosystem);
-  if (!norm) return false;
-  const list = getEcosystemList(ecosystem, corpus);
-  for (let i = 0; i < list.length; i++) {
-    if (normalizeName(list[i], ecosystem) === norm) {
-      return true;
-    }
-  }
+function isCloseVariant(distance, nameLength) {
+  if (distance === 0) return false;
+  if (distance === 1) return nameLength >= 4;
+  if (distance === 2) return nameLength >= 8;
   return false;
 }
 
-/**
- * Checks if `name` is a likely typosquat of a popular package in `corpus`.
- * Returns the popular package name (and distance) if a match is found, or null if clean/popular.
- */
-export function findTyposquatCandidate(name, ecosystem = 'npm', corpus = null) {
-  const norm = normalizeName(name, ecosystem);
-  if (!norm || norm.length < 3) return null;
-
-  const list = getEcosystemList(ecosystem, corpus);
-  if (list.length === 0) return null;
-
-  // If the package itself is in the popular corpus, it is not a typosquat
-  if (isPopularPackage(norm, ecosystem, corpus)) {
-    return null;
-  }
-
-  const collapsedInput = norm.replace(/[-_.]/g, '');
-  let bestTarget = null;
-  let bestDistance = Infinity;
-
-  for (let i = 0; i < list.length; i++) {
-    const candidateRaw = list[i];
-    const candidate = normalizeName(candidateRaw, ecosystem);
-    if (!candidate || candidate === norm) continue;
-
-    // 1. Delimiter confusion check (e.g. reactdom vs react-dom, python_dotenv vs python-dotenv)
-    const collapsedCand = candidate.replace(/[-_.]/g, '');
-    if (collapsedInput === collapsedCand && norm !== candidate) {
-      return {
-        target: candidateRaw,
-        package: candidateRaw,
-        distance: 1,
-        reason: 'delimiter confusion',
-      };
-    }
-
-    // 2. Damerau-Levenshtein distance threshold scaled by package length
-    const maxAllowedDist = candidate.length >= 8 ? 2 : 1;
-    if (Math.abs(norm.length - candidate.length) > maxAllowedDist) continue;
-
-    const dist = damerauLevenshtein(norm, candidate);
-    if (dist > 0 && dist <= maxAllowedDist && dist < bestDistance) {
-      bestDistance = dist;
-      bestTarget = candidateRaw;
+// Runtime corpus extension for .slopdepsrc.json (private registries, team stacks)
+export function addPopularEntries(ecosystem, names) {
+  if (!CORPUS_EXACT[ecosystem] || !Array.isArray(names)) return;
+  for (const name of names) {
+    if (typeof name !== 'string') continue;
+    const canonical = name.trim().toLowerCase();
+    if (!canonical) continue;
+    if (!CORPUS_EXACT[ecosystem].has(canonical)) {
+      CORPUS_EXACT[ecosystem].add(canonical);
+      CORPUS[ecosystem].push({ canonical, normalized: normalizeName(canonical) });
     }
   }
+}
 
-  if (bestTarget) {
-    return {
-      target: bestTarget,
-      package: bestTarget,
-      distance: bestDistance,
-      reason: 'typosquat similarity',
-    };
+// Merge auto-generated corpus (src/corpus.generated.js) if present
+try {
+  // eslint-disable-next-line no-undef
+  const generated = await import('./corpus.generated.js');
+  addPopularEntries('npm', generated.NPM_GENERATED || []);
+  addPopularEntries('pypi', generated.PYPI_GENERATED || []);
+} catch {
+  // generated corpus not built yet — curated corpus still active
+}
+
+export function corpusSize(ecosystem) {
+  return CORPUS[ecosystem] ? CORPUS[ecosystem].length : 0;
+}
+
+// Membership check without scoring — offline/privacy mode uses this to verify
+// popular packages straight from the bundled corpus with zero network calls.
+export function isPopularPackage(name, ecosystem, externalCorpus = null) {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (externalCorpus && Array.isArray(externalCorpus[ecosystem])) {
+    return externalCorpus[ecosystem].some(x => (typeof x === 'string' ? x.toLowerCase() : x.canonical.toLowerCase()) === lower);
   }
+  if (!CORPUS_EXACT[ecosystem]) return false;
+  // Scoped packages must match their exact scoped name; stripping scopes allows
+  // malicious packages like @evil/lodash to masquerade as popular packages offline.
+  return CORPUS_EXACT[ecosystem].has(lower);
+}
 
-  return null;
+export function findTyposquatCandidate(name, ecosystem, ageDays = Infinity, externalCorpus = null) {
+  if (typeof ageDays === 'object' && ageDays !== null) {
+    externalCorpus = ageDays;
+    ageDays = Infinity;
+  }
+  const corpus = (externalCorpus && Array.isArray(externalCorpus[ecosystem]))
+    ? externalCorpus[ecosystem].map(item => (typeof item === 'string' ? { canonical: item, normalized: normalizeName(item.startsWith('@') ? item.slice(item.indexOf('/') + 1) : item) } : item))
+    : CORPUS[ecosystem];
+  if (!corpus || !name) return null;
+
+  const isExactPopular = isPopularPackage(name, ecosystem, externalCorpus);
+  if (isExactPopular) return null;
+
+  // Compare the package part after any scope; a scoped name cannot typosquat an
+  // unscoped popular package and vice versa.
+  const bare = ecosystem === 'npm' && name.startsWith('@') ? name.slice(name.indexOf('/') + 1) : name;
+  if (!name.startsWith('@') && isPopularPackage(bare, ecosystem, externalCorpus)) return null;
+  const normalized = normalizeName(bare);
+
+  let best = null;
+  for (const entry of corpus) {
+    // Only the popular package itself is exempt; a different raw name that
+    // normalizes identically ('m0rgan' vs 'morgan') is a lookalike squat.
+    if (bare === entry.canonical) continue;
+    const distance = editDistance(normalized, entry.normalized);
+    const variant = distance === 0 || isCloseVariant(distance, entry.normalized.length);
+    if (!variant) continue;
+    if (!best || distance < best.distance) {
+      best = { canonical: entry.canonical, distance };
+    }
+  }
+  if (!best) return null;
+
+  const established = Number.isFinite(ageDays) && ageDays >= 365;
+  return {
+    ...best,
+    target: best.canonical,
+    severity: established ? 'suggestion' : 'suspect'
+  };
+}
+
+// "Did you mean" text for names that turned out not to exist.
+export function typosquatSuggestion(name, ecosystem) {
+  const candidate = findTyposquatCandidate(name, ecosystem);
+  if (!candidate || candidate.distance > 1) return null;
+  return candidate.canonical;
 }

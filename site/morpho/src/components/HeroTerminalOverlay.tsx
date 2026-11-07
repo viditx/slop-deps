@@ -197,7 +197,7 @@ export const HeroTerminalOverlay: React.FC<HeroTerminalOverlayProps> = ({
                   </span>
                   <span
                     aria-hidden="true"
-                    className="ml-3 pl-3 border-l border-white/15 text-[10px] uppercase tracking-widest text-[#F5F5F0]/40 group-hover:text-[#F5F5F0] transition-colors"
+                    className="ml-3 pl-3 border-l border-white/15 text-[10px] uppercase tracking-widest text-[#F5F5F0]/65 group-hover:text-[#F5F5F0] transition-colors"
                   >
                     COPY
                   </span>

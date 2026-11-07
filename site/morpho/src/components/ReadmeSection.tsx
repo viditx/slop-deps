@@ -34,7 +34,7 @@ export function ReadmeSection() {
             <BookOpen aria-hidden="true" className="w-3.5 h-3.5" strokeWidth={2.5} />
             <span>readme.md</span>
           </span>
-          <span className="hidden sm:inline font-terminal text-[11px] text-[#F5F5F0]/40">
+          <span className="hidden sm:inline font-terminal text-[11px] text-[#F5F5F0]/65">
             {VERSION}
           </span>
         </div>
@@ -119,7 +119,7 @@ export function ReadmeSection() {
               <div className="flex items-center gap-2 font-terminal text-xs sm:text-sm text-[#F5F5F0]">
                 <Terminal className="w-3.5 h-3.5 text-emerald-400" />
                 <span>$ npx slop-deps</span>
-                <span className="text-[#F5F5F0]/40 text-[11px] hidden sm:inline">
+                <span className="text-[#F5F5F0]/65 text-[11px] hidden sm:inline">
                   or: slopdeps &lt;dir&gt;
                 </span>
               </div>
@@ -184,11 +184,11 @@ export function ReadmeSection() {
             {/* Micro spec tokens */}
             <div className="flex flex-wrap items-center gap-1.5 font-terminal text-[11px] text-[#F5F5F0]/60 pt-1">
               <span className="text-[#F5F5F0]/85 font-medium">npm · PyPI · crates.io</span>
-              <span className="text-[#F5F5F0]/25">/</span>
+              <span className="text-[#F5F5F0]/60">/</span>
               <span>zero dependencies</span>
-              <span className="text-[#F5F5F0]/25">/</span>
+              <span className="text-[#F5F5F0]/60">/</span>
               <span>Node &gt;= 18</span>
-              <span className="text-[#F5F5F0]/25">/</span>
+              <span className="text-[#F5F5F0]/60">/</span>
               <span>offline corpus ready</span>
             </div>
           </div>

@@ -196,58 +196,86 @@ const TS_PRIMITIVES = new Set([
   'void', 'string', 'number', 'boolean', 'any', 'never', 'unknown', 'symbol', 'bigint', 'object'
 ]);
 
-function isInsideJsxOrBlock(code, matchIndex, isStatic = true) {
-  let braceDepth = 0;
-  for (let i = 0; i < matchIndex; i++) {
-    const ch = code[i];
-    if (ch === '{') braceDepth++;
-    else if (ch === '}' && braceDepth > 0) braceDepth--;
-  }
+// Single-pass evaluation of "is this regex match inside a JSX element or a
+// nested block?" for every match in a file. The previous per-match scan was
+// O(file × matches) — pathological on large/minified bundles (a red-team
+// perf-DoS vector). This walks the file exactly once, snapshots the analyzer
+// state at each match index, and returns verdict-identical results (proven
+// by differential testing against the original per-match implementation).
+function buildJsxContexts(code, matchIndices) {
+  const pending = [...new Set(matchIndices)]
+    .filter((ix) => Number.isInteger(ix) && ix >= 0 && ix <= code.length)
+    .sort((a, b) => a - b);
+  const snapshots = new Map();
+  let pi = 0;
 
-  // Static imports and exports are syntactically illegal inside blocks or functions
-  if (isStatic && braceDepth > 0) return true;
-
-  // Track unclosed JSX/HTML tags up to match index
-  const openTags = [];
+  let outerBraceDepth = 0;   // braces seen outside any tag scan (block depth)
+  const openTags = [];       // completed, still-open JSX tag names
+  const rawBraceStack = [];  // positions of currently-open braces, any mode
   let lastTagEnd = 0;
+
+  const takeSnapshot = (idx) => {
+    const lastOpen = openTags.length ? openTags[openTags.length - 1] : null;
+    // Net open-brace count in [lastTagEnd, idx) — a positional stack gives the
+    // same answer as the original's raw re-scan of that window.
+    let exprAfterTag = 0;
+    for (let k = rawBraceStack.length - 1; k >= 0 && rawBraceStack[k] >= lastTagEnd; k--) exprAfterTag++;
+    snapshots.set(idx, { braceDepth: outerBraceDepth, lastOpen, exprAfterTag });
+  };
+  const flushUpTo = (pos) => {
+    while (pi < pending.length && pending[pi] <= pos) takeSnapshot(pending[pi++]);
+  };
+
   let i = 0;
-  while (i < matchIndex) {
+  while (i < code.length) {
+    flushUpTo(i);
     const ch = code[i];
+
+    if (ch === '{') {
+      outerBraceDepth++;
+      rawBraceStack.push(i);
+      i++;
+      continue;
+    }
+    if (ch === '}') {
+      if (outerBraceDepth > 0) outerBraceDepth--;
+      if (rawBraceStack.length) rawBraceStack.pop();
+      i++;
+      continue;
+    }
+
     if (ch === '<') {
       const prev = i > 0 ? code[i - 1] : ' ';
-      if (/[a-zA-Z0-9_$]/.test(prev)) {
-        i++;
-        continue;
-      }
+      if (/[a-zA-Z0-9_$]/.test(prev)) { i++; continue; }
 
       const isClose = code[i + 1] === '/';
       const nameStart = isClose ? i + 2 : i + 1;
       let nameEnd = nameStart;
-      while (nameEnd < matchIndex && /[a-zA-Z0-9_.:-]/.test(code[nameEnd])) {
-        nameEnd++;
-      }
-
+      while (nameEnd < code.length && /[a-zA-Z0-9_.:-]/.test(code[nameEnd])) nameEnd++;
       const tagName = code.slice(nameStart, nameEnd);
-      if (!tagName || !/^[a-zA-Z]/.test(tagName) || TS_PRIMITIVES.has(tagName.toLowerCase())) {
-        i++;
-        continue;
-      }
+      if (!tagName || !/^[a-zA-Z]/.test(tagName) || TS_PRIMITIVES.has(tagName.toLowerCase())) { i++; continue; }
 
+      // Tag names contain no braces: every index up to nameEnd - 1 saw the
+      // same frozen state, so one flush covers them all.
+      flushUpTo(nameEnd - 1);
+
+      const rawBracesBeforeScan = rawBraceStack.slice();
       let j = nameEnd;
       let exprDepth = 0;
       let isSelfClose = false;
       let isInvalid = false;
-
-      while (j < matchIndex) {
+      while (j < code.length) {
+        flushUpTo(j);
         const tCh = code[j];
-        if (tCh === '{') exprDepth++;
-        else if (tCh === '}' && exprDepth > 0) exprDepth--;
-        else if (exprDepth === 0) {
+        if (tCh === '{') {
+          exprDepth++;
+          rawBraceStack.push(j);
+        } else if (tCh === '}') {
+          if (exprDepth > 0) exprDepth--;
+          if (rawBraceStack.length) rawBraceStack.pop();
+        } else if (exprDepth === 0) {
           // In JSX attributes, ;, ?, (, ), [, ], +, *, % outside { } indicate JS code (not a tag)
-          if (/[;?\(\)\[\]+*%]/.test(tCh)) {
-            isInvalid = true;
-            break;
-          }
+          if (/[;?\(\)\[\]+*%]/.test(tCh)) { isInvalid = true; break; }
           if (tCh === '>') {
             if (code[j - 1] === '/') isSelfClose = true;
             break;
@@ -256,56 +284,60 @@ function isInsideJsxOrBlock(code, matchIndex, isStatic = true) {
         j++;
       }
 
-      if (isInvalid || j >= matchIndex) {
+      // Invalid or unterminated tags are re-scanned as plain code from
+      // nameStart (exactly like the original). Brace mutations made during
+      // this scan must be rolled back first — the re-scan re-counts them.
+      if (isInvalid || j >= code.length) {
+        rawBraceStack.length = 0;
+        rawBraceStack.push(...rawBracesBeforeScan);
         i = isInvalid ? nameStart : j;
         continue;
       }
 
       // Generic arrow function or type parameter, e.g. <T>(v: T) => ...
+      // (original skips the lastTagEnd/push bookkeeping for these)
       if (!isSelfClose && !isClose) {
         let afterGt = j + 1;
-        while (afterGt < matchIndex && /\s/.test(code[afterGt])) afterGt++;
+        while (afterGt < code.length && /\s/.test(code[afterGt])) afterGt++;
         if (code[afterGt] === '(' || code[afterGt] === ',') {
+          rawBraceStack.length = 0;
+          rawBraceStack.push(...rawBracesBeforeScan);
           i = nameStart;
           continue;
         }
       }
 
+      // Snapshots at indices <= j must NOT see this tag as closed; from j+1
+      // on, it is (mirrors the original's j < matchIndex bound).
+      flushUpTo(j);
       lastTagEnd = j + 1;
 
-      if (isSelfClose) {
-        i = j + 1;
-        continue;
-      }
-
+      if (isSelfClose) { flushUpTo(j + 1); i = j + 1; continue; }
       if (isClose) {
-        if (openTags.length > 0 && openTags[openTags.length - 1] === tagName) {
-          openTags.pop();
-        }
+        if (openTags.length > 0 && openTags[openTags.length - 1] === tagName) openTags.pop();
       } else {
         openTags.push(tagName);
       }
-
+      flushUpTo(j + 1);
       i = j + 1;
       continue;
     }
+
     i++;
   }
+  flushUpTo(code.length);
+  return snapshots;
+}
 
-  const lastOpen = openTags[openTags.length - 1];
-  if (lastOpen && lastOpen.toLowerCase() !== 'script') {
-    // If inside an active embedded expression brace { ... } after the tag opened, it is executable JS code!
-    let exprDepthAfterTag = 0;
-    for (let k = lastTagEnd; k < matchIndex; k++) {
-      if (code[k] === '{') exprDepthAfterTag++;
-      else if (code[k] === '}' && exprDepthAfterTag > 0) exprDepthAfterTag--;
-    }
-    if (exprDepthAfterTag > 0) {
-      return false;
-    }
-    return true;
+// Decision function, identical to the original's per-match logic, evaluated
+// against a snapshot taken by buildJsxContexts.
+function isInsideJsxOrBlockFromSnapshot(snap, isStatic) {
+  if (isStatic && snap.braceDepth > 0) return true;
+  if (snap.lastOpen && snap.lastOpen.toLowerCase() !== 'script') {
+    // If inside an active embedded expression brace { ... } after the tag
+    // opened, it is executable JS code!
+    return snap.exprAfterTag > 0 ? false : true;
   }
-
   return false;
 }
 
@@ -327,35 +359,43 @@ export function extractJsImports(sourceCode, filePath = '') {
   const packages = new Map();
   const { masked, strings } = maskStrings(sourceCode);
 
+  // Collect every regex match first, then evaluate all JSX/block contexts in
+  // ONE pass over the file (O(file) instead of O(file × matches)).
+  const allMatches = [];
   for (let pIdx = 0; pIdx < PATTERNS.length; pIdx++) {
     const regex = PATTERNS[pIdx];
     const isStatic = pIdx < 2;
     regex.lastIndex = 0;
     let match;
-
     while ((match = regex.exec(masked)) !== null) {
-      if (isInsideJsxOrBlock(masked, match.index, isStatic)) {
-        continue;
-      }
+      allMatches.push({ index: match.index, spec: match[1], isStatic });
+    }
+  }
+  const contexts = buildJsxContexts(masked, allMatches.map((m) => m.index));
 
-      const rawSpec = unmask(match[1], strings).trim();
-      // Skip template literals with dynamic interpolation
-      if (rawSpec.includes('${')) {
-        continue;
-      }
+  for (const m of allMatches) {
+    const snap = contexts.get(m.index);
+    if (snap && isInsideJsxOrBlockFromSnapshot(snap, m.isStatic)) {
+      continue;
+    }
 
-      const pkg = cleanPackageName(rawSpec);
-      if (pkg && !packages.has(pkg)) {
-        packages.set(pkg, {
-          name: pkg,
-          ecosystem: 'npm',
-          file: filePath,
-          // +1: separator-consuming patterns (leading \n, ;, etc.) start the match
-          // one char before the keyword, so include it when counting newlines
-          line: masked.slice(0, match.index + 1).split('\n').length,
-          raw: rawSpec
-        });
-      }
+    const rawSpec = unmask(m.spec, strings).trim();
+    // Skip template literals with dynamic interpolation
+    if (rawSpec.includes('${')) {
+      continue;
+    }
+
+    const pkg = cleanPackageName(rawSpec);
+    if (pkg && !packages.has(pkg)) {
+      packages.set(pkg, {
+        name: pkg,
+        ecosystem: 'npm',
+        file: filePath,
+        // +1: separator-consuming patterns (leading \n, ;, etc.) start the match
+        // one char before the keyword, so include it when counting newlines
+        line: masked.slice(0, m.index + 1).split('\n').length,
+        raw: rawSpec
+      });
     }
   }
 

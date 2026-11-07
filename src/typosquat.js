@@ -6,7 +6,7 @@ const DIGRAPHS = [['rn', 'm'], ['vv', 'w'], ['cl', 'd'], ['cj', 'g'], ['nn', 'm'
 
 // Most-installed / most-imitated packages. Typosquats live one or two edits away
 // from these names, so they form the comparison corpus.
-const NPM_POPULAR = [
+export const NPM_POPULAR = [
   // frameworks & view
   'react', 'react-dom', 'react-router', 'react-query', 'preact', 'vue', 'vue-router',
   'angular', 'svelte', 'solid-js', 'lit', 'alpinejs', 'next', 'nuxt', 'gatsby', 'remix',
@@ -50,7 +50,7 @@ const NPM_POPULAR = [
   'left-pad', 'ua-parser-js', 'node-ipc', 'coa', 'rc', 'event-stream', 'colors'
 ];
 
-const PYPI_POPULAR = [
+export const PYPI_POPULAR = [
   // http & networking
   'requests', 'urllib3', 'httpx', 'aiohttp', 'httplib2', 'certifi', 'idna', 'chardet',
   'requests-oauthlib', 'oauthlib', 'google-auth', 'websockets',
@@ -93,7 +93,7 @@ const PYPI_POPULAR = [
 ];
 
 
-const RUST_POPULAR = [
+export const RUST_POPULAR = [
   'serde', 'serde_json', 'serde_yaml', 'tokio', 'tokio-util', 'futures', 'async-std',
   'clap', 'structopt', 'anyhow', 'thiserror', 'eyre', 'log', 'env_logger', 'tracing',
   'reqwest', 'hyper', 'axum', 'actix-web', 'actix-rt', 'rocket', 'warp',
@@ -197,23 +197,35 @@ export function corpusSize(ecosystem) {
 
 // Membership check without scoring — offline/privacy mode uses this to verify
 // popular packages straight from the bundled corpus with zero network calls.
-export function isPopularPackage(name, ecosystem) {
-  if (!name || !CORPUS_EXACT[ecosystem]) return false;
+export function isPopularPackage(name, ecosystem, externalCorpus = null) {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (externalCorpus && Array.isArray(externalCorpus[ecosystem])) {
+    return externalCorpus[ecosystem].some(x => (typeof x === 'string' ? x.toLowerCase() : x.canonical.toLowerCase()) === lower);
+  }
+  if (!CORPUS_EXACT[ecosystem]) return false;
   // Scoped packages must match their exact scoped name; stripping scopes allows
   // malicious packages like @evil/lodash to masquerade as popular packages offline.
-  return CORPUS_EXACT[ecosystem].has(name.toLowerCase());
+  return CORPUS_EXACT[ecosystem].has(lower);
 }
-export function findTyposquatCandidate(name, ecosystem, ageDays = Infinity) {
-  const corpus = CORPUS[ecosystem];
+
+export function findTyposquatCandidate(name, ecosystem, ageDays = Infinity, externalCorpus = null) {
+  if (typeof ageDays === 'object' && ageDays !== null) {
+    externalCorpus = ageDays;
+    ageDays = Infinity;
+  }
+  const corpus = (externalCorpus && Array.isArray(externalCorpus[ecosystem]))
+    ? externalCorpus[ecosystem].map(item => (typeof item === 'string' ? { canonical: item, normalized: normalizeName(item.startsWith('@') ? item.slice(item.indexOf('/') + 1) : item) } : item))
+    : CORPUS[ecosystem];
   if (!corpus || !name) return null;
 
-  // A corpus member is popular in its own right — never flag one giant as a squat of another ('react' vs 'preact').
-  if (CORPUS_EXACT[ecosystem]?.has(name.toLowerCase())) return null;
+  const isExactPopular = isPopularPackage(name, ecosystem, externalCorpus);
+  if (isExactPopular) return null;
 
   // Compare the package part after any scope; a scoped name cannot typosquat an
   // unscoped popular package and vice versa.
   const bare = ecosystem === 'npm' && name.startsWith('@') ? name.slice(name.indexOf('/') + 1) : name;
-  if (!name.startsWith('@') && CORPUS_EXACT[ecosystem]?.has(bare.toLowerCase())) return null;
+  if (!name.startsWith('@') && isPopularPackage(bare, ecosystem, externalCorpus)) return null;
   const normalized = normalizeName(bare);
 
   let best = null;
@@ -233,6 +245,7 @@ export function findTyposquatCandidate(name, ecosystem, ageDays = Infinity) {
   const established = Number.isFinite(ageDays) && ageDays >= 365;
   return {
     ...best,
+    target: best.canonical,
     severity: established ? 'suggestion' : 'suspect'
   };
 }
