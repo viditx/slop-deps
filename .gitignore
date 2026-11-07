@@ -5,6 +5,7 @@ dist/
 installer.exe
 !site/morpho/public/slopdeps-installer.exe
 bin/*.exe
+!bin/slopdeps.exe
 bin/*.pdb
 site/**/node_modules/
 site/**/dist/
