@@ -1,0 +1,9 @@
+*.pdb
+bin/*.pdb
+site/
+test/
+demo/
+playground/
+fixes/
+audit-report/
+installer*

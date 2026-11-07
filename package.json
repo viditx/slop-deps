@@ -28,7 +28,8 @@
   "author": "Vidit Patil <viditx@users.noreply.github.com>",
   "license": "MIT",
   "files": [
-    "bin",
+    "bin/slop-deps.js",
+    "bin/slopdeps.exe",
     "src",
     "README.md",
     "PRIVACY.md",
