@@ -67,6 +67,12 @@ Add to your GitHub Actions workflow:
 | **WARN** | Package name closely mimics an established registry giant (typosquat). | Verify publisher identity and spellings. |
 | **CLEAN** | Verified established package on the registry. | Safe to install. |
 
+### Standard Library & Built-in Modules
+
+Standard library and runtime modules (such as Python's `os`, `sys`, `json`, `pathlib`, or Node's `node:fs`, `path`) are recognized directly by `src/builtins.js`:
+- **CLI Engine:** Automatically recognized and excluded from external registry lookups, ensuring zero network calls and clean passes.
+- **Web Inspector:** Rendered explicitly as `VERIFIED` with reason `standard library module` (green badge), confirming to developers that builtins are recognized without triggering false hallucination alerts.
+
 ---
 
 ## CLI Usage
