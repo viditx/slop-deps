@@ -102,17 +102,18 @@ export async function applyFixes(targetDir, fixes, { dryRun = false } = {}) {
         continue;
       }
       const before = lines[idx];
-      if (!isSafeReplacement(before, fx.new, relFile)) {
+      const after = before.replace(fx.old, fx.new);
+      if (!isSafeReplacement(before, after, relFile)) {
         results.push({ ...fx, applied: false, reason: 'rejected: only the package specifier may change (possible injection)' });
         continue;
       }
-      lines[idx] = lines[idx].replace(fx.old, fx.new);
-      if (lines[idx] !== before) {
-        changed++;
-        results.push({ ...fx, applied: true, line: idx + 1, before, after: lines[idx] });
-      } else {
+      if (after === before) {
         results.push({ ...fx, applied: false, reason: 'no textual change' });
+        continue;
       }
+      lines[idx] = after;
+      changed++;
+      results.push({ ...fx, applied: true, line: idx + 1, before, after });
     }
     if (changed > 0 && !dryRun) {
       // Keep the FIRST backup only: flag 'wx' fails (EEXIST) if a .bak already

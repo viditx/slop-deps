@@ -97,7 +97,7 @@ export function formatByteSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export function detectFileEcosystem(fileName: string, rawContent?: string): FileEcosystem {
+export function detectFileEcosystem(fileName: string): FileEcosystem {
   const lower = fileName.trim().toLowerCase();
 
   // npm & web files (manifests, HTML, JS/TS, UI components)
@@ -138,26 +138,6 @@ export function detectFileEcosystem(fileName: string, rawContent?: string): File
     return 'crates';
   }
 
-  // Content-sniffing fallback if extension is generic (e.g. Dockerfile, .txt, or nameless)
-  if (rawContent) {
-    const trimmed = rawContent.trim();
-    if (trimmed.startsWith('<') && (trimmed.includes('<html') || trimmed.includes('<script'))) {
-      return 'npm';
-    }
-    if (trimmed.startsWith('{') && (trimmed.includes('"dependencies"') || trimmed.includes('"devDependencies"'))) {
-      return 'npm';
-    }
-    if (trimmed.includes('import ') && (trimmed.includes('from ') || trimmed.includes('require('))) {
-      return 'npm';
-    }
-    if (trimmed.includes('def ') || (trimmed.includes('import ') && trimmed.includes('print('))) {
-      return 'pypi';
-    }
-    if (trimmed.includes('fn ') && trimmed.includes('use ')) {
-      return 'crates';
-    }
-  }
-
   return 'unknown';
 }
 
@@ -181,7 +161,14 @@ export function extractHtmlDependencies(
       if (parsed?.imports && typeof parsed.imports === 'object') {
         for (const key of Object.keys(parsed.imports)) {
           const clean = key.trim();
-          if (clean && !clean.startsWith('.') && !clean.startsWith('/') && !clean.startsWith('#')) {
+          if (
+            clean &&
+            !clean.startsWith('.') &&
+            !clean.startsWith('/') &&
+            !clean.startsWith('#') &&
+            !clean.startsWith('~') &&
+            !/^@\//.test(clean)
+          ) {
             const root = clean.startsWith('@')
               ? clean.split('/').slice(0, 2).join('/')
               : clean.split('/')[0];
@@ -197,7 +184,7 @@ export function extractHtmlDependencies(
   // 2. CDN Script tags (jsdelivr, unpkg, esm.sh, skypack)
   const scriptSrcRegex = /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
   const cdnPkgRegex =
-    /(?:cdn\.jsdelivr\.net\/(?:npm|gh)|unpkg\.com|esm\.sh|cdn\.skypack\.dev(?:\/pin)?)\/(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)(?:@([^\s"'/]+))?/;
+    /(?:cdn\.jsdelivr\.net\/npm|unpkg\.com|esm\.sh|cdn\.skypack\.dev(?:\/pin)?)\/(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)(?:@([^\s"'/]+))?/;
   let srcMatch: RegExpExecArray | null;
   while ((srcMatch = scriptSrcRegex.exec(htmlContent)) !== null) {
     const src = srcMatch[1];
@@ -360,11 +347,12 @@ export function extractManifestDependencies(
 
   // 7. Rust Cargo.toml
   if (lower.endsWith('cargo.toml')) {
-    return extractCargoToml(rawContent) as unknown as Array<{
-      name: string;
-      version: string;
-      ecosystem: 'crates';
-    }>;
+    const raw = extractCargoToml(rawContent);
+    return raw.map((d: any) => ({
+      name: d.name,
+      version: '*',
+      ecosystem: 'crates' as const,
+    }));
   }
 
   // 8. Rust source files (.rs)
@@ -556,7 +544,7 @@ export async function inspectDroppedFileAsync(
     concurrency,
     async (dep): Promise<InspectedPackage> => {
       const pkgName = dep.name;
-      const pkgEco = dep.ecosystem;
+      const pkgEco: 'npm' | 'pypi' | 'crates' = (dep.ecosystem === 'cargo' ? 'crates' : dep.ecosystem) as any;
 
       // 1. Builtin check
       // REGRESSION CHECK: node:fs, node:path, os, sys, json must all be VERIFIED
@@ -610,7 +598,7 @@ export async function inspectDroppedFileAsync(
           verdict: 'UNCHECKED',
           isBuiltin: false,
           registryChecked: false,
-          reason: 'crates.io offline typosquat check only',
+          reason: 'run the CLI',
         };
       }
 

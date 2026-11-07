@@ -106,7 +106,7 @@ function isFlagged(pkg: PackageResult): boolean {
 }
 
 function formatHeadline(result: FileScanResult): string {
-  if (result.error === 'too_large') return 'FILE TOO LARGE (>2MB)';
+  if (result.error === 'too_large') return 'FILE TOO LARGE (2 MB MAX)';
   if (result.error === 'timeout') return 'SCAN TIMEOUT';
   if (result.error === 'unsupported') return 'UNSUPPORTED FILE';
   if (result.error === 'invalid') return 'INVALID MANIFEST';
@@ -1184,7 +1184,7 @@ export function SlopDropBox() {
                     })}
                   </div>
 
-                  {/* Actions Bar: copy report / scan another / $ npx slop-deps copy chip */}
+                  {/* Actions Bar: copy report / scan another / $ slopdeps copy chip */}
                   <div
                     data-testid="result-actions-bar"
                     className="pt-4 border-t border-[#F5F5F0]/15 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"

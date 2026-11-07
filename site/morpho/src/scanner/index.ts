@@ -90,7 +90,7 @@ function classifyManifestError(
     const activeReqLines = rawContent
       .split(/\r?\n/)
       .map((l) => l.replace(/(^|\s)#.*$/, '').trim())
-      .filter((l) => l.length > 0 && !l.startsWith('-'));
+      .filter((l) => l.length > 0);
 
     if (activeReqLines.length === 0) {
       return 'empty';
@@ -191,9 +191,21 @@ export async function scanFile(
       const isReqTxt =
         lower.endsWith('requirements.txt') ||
         /requirements.*\.txt$/.test(lower);
+
+      if (isReqTxt) {
+        // Requirements with only flags/direct URLs has 0 registry packages -> clean state (D3)
+        return {
+          fileName,
+          ecosystem: record.ecosystem || ecosystem,
+          packages: [],
+          counts,
+          durationMs: Math.max(0, Math.round(performance.now() - start)),
+          error: undefined,
+        };
+      }
+
       const isManifest =
         lower.endsWith('package.json') ||
-        isReqTxt ||
         lower.endsWith('pyproject.toml') ||
         lower.endsWith('cargo.toml') ||
         lower.endsWith('pipfile') ||
@@ -206,7 +218,7 @@ export async function scanFile(
           packages: [],
           counts,
           durationMs: Math.max(0, Math.round(performance.now() - start)),
-          error: isReqTxt ? 'invalid' : 'empty',
+          error: 'empty',
         };
       }
 

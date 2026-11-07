@@ -948,17 +948,29 @@ async function run() {
   }
   console.log('  ✔ PASS: missing target directories fail-closed with code 2\n');
 
-  // Test 60: --fix rejects injection-shaped AI rewrites (prompt-injection guard)
-  console.log('Test 60: fixer injection guard');
+    // Test 60: --fix rejects injection-shaped AI rewrites and validates exact result line
+  console.log('Test 60: fixer exact-line & injection guard');
   {
     const { applyFixes } = await import('../src/fixer.js');
     const os = await import('node:os');
     const proj = fs.mkdtempSync(path.join(os.tmpdir(), 't60-'));
     fs.writeFileSync(path.join(proj, 'app.js'), "import reqeusts from 'reqeusts';\nimport lodash from 'lodash';\n");
     fs.writeFileSync(path.join(proj, 'app.py'), "import reqeusts\nimport json\n");
+
+    // 1. Terminator mismatch fix must be REJECTED, file byte-unchanged
+    const termMismatchFix = [
+      { file: 'app.js', line: 1, old: "import reqeusts from 'reqeusts'", new: "import reqeusts from 'requests';" }
+    ];
+    const mismatchRes = await applyFixes(proj, termMismatchFix);
+    assert.equal(mismatchRes[0].applied, false, 'Terminator mismatch fix must be rejected');
+    assert.ok(mismatchRes[0].reason && mismatchRes[0].reason.startsWith('rejected'), 'Reject reason must start with rejected');
+    const byteUnchanged = fs.readFileSync(path.join(proj, 'app.js'), 'utf-8');
+    assert.equal(byteUnchanged, "import reqeusts from 'reqeusts';\nimport lodash from 'lodash';\n", 'File must remain byte-unchanged on rejection');
+
+    // 2. Benign substring fix + injections + benign python fix
     const fixes = [
-      // benign: specifier-only change must apply
-      { file: 'app.js', line: 1, old: "import reqeusts from 'reqeusts'", new: "import reqeusts from 'requests';" },
+      // benign: substring fix must apply and keep local typo
+      { file: 'app.js', line: 1, old: "'reqeusts'", new: "'requests'" },
       // injection: arbitrary code appended after the specifier
       { file: 'app.js', line: 2, old: "import lodash from 'lodash'", new: "import lodash from 'lodash'; require('child_process').exec('rm -rf /')" },
       // injection: whole-line rewrite
@@ -970,19 +982,25 @@ async function run() {
     ];
     const results = await applyFixes(proj, fixes);
     const byOld = new Map(results.map((r) => [r.old, r]));
-    assert.ok(byOld.get("import reqeusts from 'reqeusts'").applied, 'Specifier-only fix must apply');
+    assert.ok(byOld.get("'reqeusts'").applied, 'Substring specifier-only fix must apply');
+    assert.equal(byOld.get("'reqeusts'").after, "import reqeusts from 'requests';", 'After field must match exact line');
     assert.ok(!byOld.get("import lodash from 'lodash'; require('child_process').exec('rm -rf /')"), 'sanity');
     const rejected = results.filter((r) => r.reason && r.reason.startsWith('rejected'));
     assert.equal(rejected.length, 3, `Exactly 3 injection-shaped rewrites must be rejected (got ${rejected.length})`);
+
     const jsContent = fs.readFileSync(path.join(proj, 'app.js'), 'utf-8');
+    const firstLine = jsContent.split('\n')[0];
+    assert.equal(firstLine, "import reqeusts from 'requests';", 'Resulting file line 1 must equal exactly import reqeusts from \'requests\';');
+    assert.ok(!jsContent.includes(';;'), 'File must not contain ;; in any case');
     assert.ok(!jsContent.includes('child_process'), 'Injected code must never land in the file');
-    assert.ok(jsContent.includes("from 'requests'"), 'Benign fix must be applied');
+
     const pyContent = fs.readFileSync(path.join(proj, 'app.py'), 'utf-8');
     assert.ok(!pyContent.includes('pwned'), 'Python statement smuggling must be rejected');
     assert.ok(pyContent.includes('import requests'), 'Benign python fix must be applied');
+    assert.ok(!pyContent.includes(';;'), 'Python file must not contain ;; in any case');
     fs.rmSync(proj, { recursive: true, force: true });
   }
-  console.log('  ✔ PASS: only specifier-only rewrites pass; code injection is rejected\n');
+  console.log('  ✔ PASS: only specifier-only rewrites pass; terminator mismatch and code injection rejected\n');
 
   // Test 61: CI workflow must be valid YAML with sane branch filters
   console.log('Test 61: CI workflow sanity');
@@ -995,7 +1013,82 @@ async function run() {
   }
   console.log('  ✔ PASS: CI triggers on [main]; action uploads SARIF even on strict failure\n');
 
-  console.log('🎉 All test assertions passed successfully!');
+  // Site-side regression suite (Tests 62..69)
+  const siteRegScript = path.resolve('fixes/verify/site_regressions.ts');
+  const tsxCli = path.resolve('site/morpho/node_modules/tsx/dist/cli.mjs');
+
+  const siteTestsPart1 = [
+    { num: '62', title: 'Test 62: CDN scoped extraction' },
+    { num: '63', title: 'Test 63: Importmap aliases (~ and @/)' },
+    { num: '64', title: 'Test 64: TOML headers ([[bin]], [[tool.poetry.source]])' },
+    { num: '65', title: 'Test 65: File size limit (>2MB -> FILE TOO LARGE)' },
+    { num: '66', title: 'Test 66: Crates verdicts & offline handling' },
+    { num: '67', title: 'Test 67: Clean source file (0 external packages)' },
+    { num: '68', title: 'Test 68: Requirements flags-only' },
+    { num: '69', title: 'Test 69: Scan timeout path' },
+  ];
+
+  for (const st of siteTestsPart1) {
+    console.log(st.title);
+    const res = spawnSync(process.execPath, [tsxCli, siteRegScript, st.num], { encoding: 'utf-8' });
+    if (res.status !== 0) {
+      console.error(res.stderr || res.stdout);
+      throw new Error(`${st.title} failed`);
+    }
+    process.stdout.write(res.stdout);
+  }
+
+  // Test 70: js-ts line number binary search differential parity (§4.10)
+  console.log('Test 70: js-ts line number binary-search differential');
+  {
+    // 1. Multi-line fixture test/app.js
+    const appJsCode = fs.readFileSync(path.resolve('test/app.js'), 'utf-8');
+    const appJsImports = extractJsImports(appJsCode, 'test/app.js');
+    assert.ok(appJsImports.length > 0, 'Must extract imports from test/app.js');
+
+    // 2. Synthetic multi-line fixture with imports at exact known lines
+    const knownLines = [
+      { line: 1, code: "import alpha from 'alpha';" },
+      { line: 42, code: "const beta = require('beta');" },
+      { line: 250, code: "import('gamma').then(g => g());" },
+      { line: 777, code: "export { delta } from 'delta';" },
+      { line: 999, code: "import * as omega from 'omega';" },
+    ];
+    let fixtureLines = new Array(1000).fill("// dummy padding line");
+    for (const k of knownLines) {
+      fixtureLines[k.line - 1] = k.code;
+    }
+    const syntheticFixture = fixtureLines.join('\n');
+    const synthImports = extractJsImports(syntheticFixture, 'synthetic.js');
+    assert.equal(synthImports.length, 5, 'Must extract all 5 synthetic imports');
+
+    // For every extracted import, assert exact equality with known line AND slice/split
+    for (const k of knownLines) {
+      const pkgName = k.code.match(/['"](\w+)['"]/)[1];
+      const extracted = synthImports.find(p => p.name === pkgName);
+      assert.ok(extracted, `Must extract ${pkgName}`);
+      assert.equal(extracted.line, k.line, `Line for ${pkgName} must equal exact known line ${k.line}`);
+      
+      // Compute old slice/split algorithm at the match position
+      const matchIdx = syntheticFixture.indexOf(k.code);
+      const oldSliceLine = syntheticFixture.slice(0, matchIdx + 1).split('\n').length;
+      assert.equal(extracted.line, oldSliceLine, `Binary search line must equal slice/split line for ${pkgName}`);
+    }
+  }
+  console.log('  ✔ PASS: binary-search newline offsets produces 100% identical line numbers to slice/split algorithm\n');
+
+  // Test 71: Pipfile, setup.cfg, .pyi, and .astro manifest parsing (§4.11)
+  console.log('Test 71: Pipfile, setup.cfg, .pyi, and .astro manifest parsing');
+  {
+    const res = spawnSync(process.execPath, [tsxCli, siteRegScript, '71'], { encoding: 'utf-8' });
+    if (res.status !== 0) {
+      console.error(res.stderr || res.stdout);
+      throw new Error('Test 71 failed');
+    }
+    process.stdout.write(res.stdout);
+  }
+
+  console.log('🎉 All 71 test assertions passed successfully!');
 }
 
 run().catch((err) => {

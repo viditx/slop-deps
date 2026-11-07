@@ -355,9 +355,30 @@ const PATTERNS = [
   /(?:^|[^\w.$])(?:jest|vi)\.(?:mock|requireActual|requireMock|importActual)\s*\(\s*['"`]([^'"`]+)['"`]\s*[,)]/g
 ];
 
+function getLineNumber(newlineOffsets, target) {
+  let low = 0;
+  let high = newlineOffsets.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (newlineOffsets[mid] < target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low + 1;
+}
+
 export function extractJsImports(sourceCode, filePath = '') {
   const packages = new Map();
   const { masked, strings } = maskStrings(sourceCode);
+
+  const newlineOffsets = [];
+  let pos = masked.indexOf('\n');
+  while (pos !== -1) {
+    newlineOffsets.push(pos);
+    pos = masked.indexOf('\n', pos + 1);
+  }
 
   // Collect every regex match first, then evaluate all JSX/block contexts in
   // ONE pass over the file (O(file) instead of O(file × matches)).
@@ -393,7 +414,7 @@ export function extractJsImports(sourceCode, filePath = '') {
         file: filePath,
         // +1: separator-consuming patterns (leading \n, ;, etc.) start the match
         // one char before the keyword, so include it when counting newlines
-        line: masked.slice(0, m.index + 1).split('\n').length,
+        line: getLineNumber(newlineOffsets, m.index + 1),
         raw: rawSpec
       });
     }

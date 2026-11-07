@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, Github, ShieldCheck, Terminal, AlertTriangle, Layers } from 'lucide-react';
+import { BookOpen, Terminal } from 'lucide-react';
 import { CatState, PixelSittingCat } from './PixelSittingCat';
 
 const GITHUB_REPO_URL = 'https://github.com/viditx/slop-deps';

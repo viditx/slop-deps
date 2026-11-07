@@ -3,7 +3,6 @@ import { Github } from 'lucide-react';
 import { TopPixelBar } from './TopPixelBar';
 import { SlopDropBox } from './SlopDropBox';
 import { ReadmeSection } from './ReadmeSection';
-import { triggerEightBitCopyChirp } from './HeroTerminalOverlay';
 import {
   applyScrollTargets,
   assignGlyphTargets,
@@ -222,6 +221,47 @@ function createGlyphSprite(
   return c;
 }
 
+type WebkitWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
+function triggerEightBitCopyChirp(audioCtxRef: React.MutableRefObject<AudioContext | null>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const AudioCtxClass =
+      window.AudioContext || (window as WebkitWindow).webkitAudioContext;
+    if (!AudioCtxClass) return;
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new AudioCtxClass();
+    }
+    const ctx = audioCtxRef.current;
+    if (ctx.state === 'suspended') {
+      void ctx.resume();
+    }
+    const now = ctx.currentTime;
+    const notes = [
+      { freq: 880.0, start: 0.0, dur: 0.042 },
+      { freq: 1318.51, start: 0.042, dur: 0.048 },
+      { freq: 1760.0, start: 0.09, dur: 0.065 },
+    ];
+    for (const note of notes) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(note.freq, now + note.start);
+      gain.gain.setValueAtTime(0.048, now + note.start);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + note.start + note.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + note.start);
+      osc.stop(now + note.start + note.dur);
+    }
+  } catch {
+    // Graceful fallback
+  }
+}
+
 export function SlopDepsCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const skipIntroRef = useRef<(() => void) | null>(null);
@@ -234,13 +274,6 @@ export function SlopDepsCanvas() {
   const [slopDockedUi, setSlopDockedUi] = useState(false);
   const [depsDockedUi, setDepsDockedUi] = useState(false);
   const [copiedHeroChip, setCopiedHeroChip] = useState(false);
-
-  const handleScrollToDrop = () => {
-    const el = document.getElementById('slop-drop-section');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
 
   const handleCopyHeroChip = async () => {
     try {
@@ -444,6 +477,7 @@ export function SlopDepsCanvas() {
     };
 
     let currentPhase: EnginePhase = initialSkip ? 'main' : 'intro-0-slow';
+    let rebuiltAtMain = false;
     let phaseStartTime = performance.now();
     let burstStartTime = 0;
     let lastFrameTime = performance.now();
@@ -615,8 +649,7 @@ export function SlopDepsCanvas() {
     };
 
     window.addEventListener('keydown', handleSkipInput);
-    window.addEventListener('pointerdown', handleSkipInput);
-
+    
     const render = (now: number) => {
       if (document.hidden) {
         lastFrameTime = now;
@@ -687,6 +720,10 @@ export function SlopDepsCanvas() {
       }
 
       if (currentPhase === 'main') {
+        if (!rebuiltAtMain) {
+          rebuiltAtMain = true;
+          rebuildAfterFontsLoaded();
+        }
         const scrollY = window.scrollY || 0;
         const deltaScrollY = scrollY - lastScrollY;
         lastScrollY = scrollY;
@@ -889,8 +926,7 @@ export function SlopDepsCanvas() {
       window.removeEventListener('pointercancel', handlePointerUp);
       window.removeEventListener('pointerleave', handlePointerLeave);
       window.removeEventListener('keydown', handleSkipInput);
-      window.removeEventListener('pointerdown', handleSkipInput);
-    };
+          };
   }, [initialSkip]);
 
   return (
