@@ -4,6 +4,7 @@ import {
   type FileScanResult,
   type PackageResult,
 } from '../scanner';
+import { formatHeadline, TIMEOUT_ERROR_MESSAGE } from '../utils/scanHeadline';
 import { CatState, PixelSittingCat } from './PixelSittingCat';
 
 const CAT_PURR_SESSION_KEY = 'slop_deps_cat_purring_below';
@@ -105,28 +106,6 @@ function isFlagged(pkg: PackageResult): boolean {
   return pkg.verdict === 'HALLUCINATED' || pkg.verdict === 'SUSPICIOUS';
 }
 
-function formatHeadline(result: FileScanResult): string {
-  if (result.error === 'too_large') return 'FILE TOO LARGE (2 MB MAX)';
-  if (result.error === 'timeout') return 'SCAN TIMEOUT';
-  if (result.error === 'unsupported') return 'UNSUPPORTED FILE';
-  if (result.error === 'invalid') return 'INVALID MANIFEST';
-  if (result.error === 'empty') return 'EMPTY MANIFEST';
-
-  const flagged =
-    (result.counts.HALLUCINATED || 0) + (result.counts.SUSPICIOUS || 0);
-  const unchecked = result.counts.UNCHECKED || 0;
-
-  if (flagged > 0) {
-    return `${flagged} FLAGGED`;
-  }
-  if (unchecked > 0) {
-    return `NO FLAGGED · ${unchecked} UNCHECKED`;
-  }
-  if (!result.packages || result.packages.length === 0) {
-    return 'NO EXTERNAL PACKAGES';
-  }
-  return 'NO FLAGGED PACKAGES';
-}
 
 function buildTextReport(items: ScannedFileItem[]): string {
   const lines: string[] = [];
@@ -571,12 +550,22 @@ export function SlopDropBox() {
       )
     );
 
-    const flagged =
-      (result.counts.HALLUCINATED || 0) + (result.counts.SUSPICIOUS || 0);
-    if (flagged > 0) {
+    // A6: compute cat transition from aggregate across all items, not just the retried file
+    const updatedItems = items.map((it) =>
+      it.id === itemId ? { ...it, status: 'done' as const, result } : it
+    );
+    const totalFlagged = updatedItems.reduce((acc, it) => {
+      const r = it.result;
+      if (!r) return acc;
+      return acc + (r.counts?.HALLUCINATED || 0) + (r.counts?.SUSPICIOUS || 0);
+    }, 0);
+
+    const hasAnyError = updatedItems.some((it) => Boolean(it.result?.error));
+
+    if (totalFlagged > 0) {
       setCatState(CatState.Alert);
       setCatBelowBox(false);
-    } else if (!result.error) {
+    } else if (!hasAnyError) {
       setCatState(CatState.Purring);
       setCatBelowBox(true);
       try {
@@ -966,7 +955,7 @@ export function SlopDropBox() {
                               {res.error === 'too_large'
                                 ? 'File exceeds 2MB browser scan limit. Use the slopdeps CLI for larger files or monorepos.'
                                 : res.error === 'timeout'
-                                  ? 'Network request timed out checking remote registries. Try again or run offline via CLI.'
+                                  ? TIMEOUT_ERROR_MESSAGE
                                   : res.error === 'unsupported'
                                     ? 'Unsupported file type. Drop manifests (package.json, requirements.txt, Cargo.toml) or code (.html, .js, .ts, .py, .rs).'
                                     : res.error === 'invalid'

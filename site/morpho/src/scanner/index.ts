@@ -32,6 +32,20 @@ function createEmptyCounts(): Record<Verdict, number> {
   };
 }
 
+function stripTomlComment(line: string): string {
+  let inDouble = false;
+  let inSingle = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"' && !inSingle && line[i - 1] !== '\\') inDouble = !inDouble;
+    else if (ch === "\'" && !inDouble) inSingle = !inSingle;
+    else if (ch === '#' && !inDouble && !inSingle) {
+      return line.slice(0, i).trim();
+    }
+  }
+  return line.trim();
+}
+
 function classifyManifestError(
   fileName: string,
   ecosystem: 'npm' | 'pypi' | 'crates',
@@ -65,7 +79,7 @@ function classifyManifestError(
   if (lower.endsWith('.toml')) {
     const activeLines = rawContent
       .split(/\r?\n/)
-      .map((l) => l.replace(/#.*$/, '').trim())
+      .map(stripTomlComment)
       .filter(Boolean);
 
     if (activeLines.length === 0) {

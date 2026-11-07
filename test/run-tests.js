@@ -1013,9 +1013,14 @@ async function run() {
   }
   console.log('  ✔ PASS: CI triggers on [main]; action uploads SARIF even on strict failure\n');
 
-  // Site-side regression suite (Tests 62..69)
+  // Site-side regression suite (Tests 62..69, 71..76)
   const siteRegScript = path.resolve('fixes/verify/site_regressions.ts');
   const tsxCli = path.resolve('site/morpho/node_modules/tsx/dist/cli.mjs');
+
+  if (!fs.existsSync(tsxCli)) {
+    console.error('Site regression tests need site deps: npm ci --prefix site/morpho (see README)');
+    process.exit(2);
+  }
 
   const siteTestsPart1 = [
     { num: '62', title: 'Test 62: CDN scoped extraction' },
@@ -1088,7 +1093,26 @@ async function run() {
     process.stdout.write(res.stdout);
   }
 
-  console.log('🎉 All 71 test assertions passed successfully!');
+  // Site-side regression suite Part 2 (Tests 72..76 - Addendum A1, A4, A6, A8, A11)
+  const siteTestsPart2 = [
+    { num: '72', title: 'Test 72: Inline-script tag attribute isolation (Addendum A1)' },
+    { num: '73', title: 'Test 73: PyPI canonical distribution resolution before typosquat check (Addendum A4)' },
+    { num: '74', title: 'Test 74: Multi-file retry aggregate cat state transition (Addendum A6)' },
+    { num: '75', title: 'Test 75: Installer canonical filename alignment (Addendum A8)' },
+    { num: '76', title: 'Test 76: Single formatHeadline definition across site/morpho (Addendum A11)' },
+  ];
+
+  for (const st of siteTestsPart2) {
+    console.log(st.title);
+    const res = spawnSync(process.execPath, [tsxCli, siteRegScript, st.num], { encoding: 'utf-8' });
+    if (res.status !== 0) {
+      console.error(res.stderr || res.stdout);
+      throw new Error(st.title + ' failed');
+    }
+    process.stdout.write(res.stdout);
+  }
+
+  console.log('🎉 All 76 test assertions passed successfully!');
 }
 
 run().catch((err) => {

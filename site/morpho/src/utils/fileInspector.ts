@@ -152,27 +152,66 @@ export function extractHtmlDependencies(
 ): Array<{ name: string; version: string; ecosystem: 'npm' }> {
   const pkgs = new Map<string, { name: string; version: string; ecosystem: 'npm' }>();
 
+  // Shared scoped-aware CDN extractor (jsdelivr /npm/ only, unpkg, esm.sh with optional prefixes, skypack)
+  const cdnPkgRegex =
+    /(?:cdn\.jsdelivr\.net\/npm\/|unpkg\.com\/|cdn\.skypack\.dev(?:\/pin)?\/|esm\.sh\/(?:(?:v\d+|stable)\/)?\*?)(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)(?:@([^\s"'/]+))?/;
+
   // 1. Script type="importmap"
   const importMapRegex = /<script\b[^>]*\btype=["']importmap["'][^>]*>([\s\S]*?)<\/script>/gi;
   let mapMatch: RegExpExecArray | null;
   while ((mapMatch = importMapRegex.exec(htmlContent)) !== null) {
     try {
       const parsed = JSON.parse(mapMatch[1]);
+      const entries: Array<[string, unknown]> = [];
       if (parsed?.imports && typeof parsed.imports === 'object') {
-        for (const key of Object.keys(parsed.imports)) {
-          const clean = key.trim();
-          if (
-            clean &&
-            !clean.startsWith('.') &&
-            !clean.startsWith('/') &&
-            !clean.startsWith('#') &&
-            !clean.startsWith('~') &&
-            !/^@\//.test(clean)
-          ) {
-            const root = clean.startsWith('@')
-              ? clean.split('/').slice(0, 2).join('/')
-              : clean.split('/')[0];
-            pkgs.set(root.toLowerCase(), { name: root, version: '*', ecosystem: 'npm' });
+        for (const [k, v] of Object.entries(parsed.imports)) {
+          entries.push([k, v]);
+        }
+      }
+      if (parsed?.scopes && typeof parsed.scopes === 'object') {
+        for (const scopeObj of Object.values(parsed.scopes)) {
+          if (scopeObj && typeof scopeObj === 'object') {
+            for (const [k, v] of Object.entries(scopeObj)) {
+              entries.push([k, v]);
+            }
+          }
+        }
+      }
+
+      for (const [key, val] of entries) {
+        const cleanKey = key.trim();
+        const strVal = typeof val === 'string' ? val.trim() : '';
+
+        // If the mapped value is a local path, the key is locally-vendored -> no phantom dep
+        const isLocalVal =
+          strVal.startsWith('.') ||
+          strVal.startsWith('/') ||
+          strVal.startsWith('file:') ||
+          strVal.startsWith('data:');
+
+        // Extract valid package keys only if value is not a local path
+        if (
+          !isLocalVal &&
+          cleanKey &&
+          !cleanKey.startsWith('.') &&
+          !cleanKey.startsWith('/') &&
+          !cleanKey.startsWith('#') &&
+          !cleanKey.startsWith('~') &&
+          !/^@\//.test(cleanKey)
+        ) {
+          const root = cleanKey.startsWith('@')
+            ? cleanKey.split('/').slice(0, 2).join('/')
+            : cleanKey.split('/')[0];
+          pkgs.set(root.toLowerCase(), { name: root, version: '*', ecosystem: 'npm' });
+        }
+
+        // Scan mapped value with CDN extractors (http/https only)
+        if (strVal && (strVal.startsWith('http://') || strVal.startsWith('https://'))) {
+          const cdnMatch = strVal.match(cdnPkgRegex);
+          if (cdnMatch && cdnMatch[1]) {
+            const name = cdnMatch[1];
+            const version = cdnMatch[2] || '*';
+            pkgs.set(name.toLowerCase(), { name, version, ecosystem: 'npm' });
           }
         }
       }
@@ -183,8 +222,6 @@ export function extractHtmlDependencies(
 
   // 2. CDN Script tags (jsdelivr, unpkg, esm.sh, skypack)
   const scriptSrcRegex = /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
-  const cdnPkgRegex =
-    /(?:cdn\.jsdelivr\.net\/npm|unpkg\.com|esm\.sh|cdn\.skypack\.dev(?:\/pin)?)\/(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)(?:@([^\s"'/]+))?/;
   let srcMatch: RegExpExecArray | null;
   while ((srcMatch = scriptSrcRegex.exec(htmlContent)) !== null) {
     const src = srcMatch[1];
@@ -197,11 +234,13 @@ export function extractHtmlDependencies(
   }
 
   // 3. Inline scripts: <script> ... imports ... </script>
-  const inlineScriptRegex = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+  // A1: Test opening tag attributes for importmap / application/json, not the whole script body
+  const inlineScriptRegex = /<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi;
   let inlineMatch: RegExpExecArray | null;
   while ((inlineMatch = inlineScriptRegex.exec(htmlContent)) !== null) {
-    const code = inlineMatch[1];
-    if (code && !inlineMatch[0].includes('importmap') && !inlineMatch[0].includes('application/json')) {
+    const attrs = inlineMatch[1] || '';
+    const code = inlineMatch[2];
+    if (code && !attrs.includes('importmap') && !attrs.includes('application/json')) {
       try {
         const extracted = (extractJsImports as any)(code, 'inline.js');
         if (extracted) {
@@ -545,6 +584,7 @@ export async function inspectDroppedFileAsync(
     async (dep): Promise<InspectedPackage> => {
       const pkgName = dep.name;
       const pkgEco: 'npm' | 'pypi' | 'crates' = (dep.ecosystem === 'cargo' ? 'crates' : dep.ecosystem) as any;
+      const checkName = pkgEco === 'pypi' ? normalizePypiName(pkgName) : pkgName;
 
       // 1. Builtin check
       // REGRESSION CHECK: node:fs, node:path, os, sys, json must all be VERIFIED
@@ -561,10 +601,10 @@ export async function inspectDroppedFileAsync(
       }
 
       // 2. Typosquat check against lazy-loaded corpus
-      const popular = isPopularPackage(pkgName, pkgEco, corpus as any);
+      const popular = isPopularPackage(checkName, pkgEco, corpus as any);
       const typosquat = popular
         ? null
-        : findTyposquatCandidate(pkgName, pkgEco, corpus as any);
+        : findTyposquatCandidate(checkName, pkgEco, corpus as any);
 
       // Crates ecosystem (no live registry lookup in browser)
       if (pkgEco === 'crates') {

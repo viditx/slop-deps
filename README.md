@@ -18,7 +18,7 @@ AI models (Claude, Cursor, Copilot, ChatGPT) confidently invent package names th
 
 ### Option 1 — Windows Interactive Installer (Recommended)
 
-Download and run `installer.exe` from [releases](https://github.com/viditx/slop-deps/releases) or the marketing site:
+Download and run `slopdeps-installer.exe` from [releases](https://github.com/viditx/slop-deps/releases) or the marketing site:
 - Installs standalone binary and zero-dependency runtime to `%LOCALAPPDATA%\Programs\slop-deps`.
 - Collision-free Windows User PATH registration (`slopdeps.cmd`, `slopdeps.ps1`).
 - Clean uninstaller included with safe PATH entry cleanup.

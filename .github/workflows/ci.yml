@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install site dependencies for integration tests
+        run: npm ci --prefix site/morpho
+
       - name: Run test suite
         run: npm test
 

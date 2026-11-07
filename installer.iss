@@ -16,7 +16,7 @@ DisableDirPage=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=dist
-OutputBaseFilename=installer
+OutputBaseFilename=slopdeps-installer
 SetupIconFile=slopdeps.ico
 WizardImageFile=installer-banner.bmp
 WizardSmallImageFile=installer-small.bmp
@@ -107,6 +107,14 @@ var
   C: Char;
 begin
   if Length(CmdName) = 0 then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  // First character must be an ASCII letter (a-z, A-Z) to prevent flags like -v or switches
+  C := CmdName[1];
+  if not (((C >= 'a') and (C <= 'z')) or ((C >= 'A') and (C <= 'Z'))) then
   begin
     Result := False;
     Exit;
