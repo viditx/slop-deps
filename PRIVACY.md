@@ -71,7 +71,7 @@ plus `.slop-deps.bak` backups.
 
 ## Verifying these claims
 
-You don't have to trust this document. The codebase is ~1,600 lines of
+You don't have to trust this document. The codebase is ~3,180 lines of
 dependency-free JavaScript:
 
 ```bash

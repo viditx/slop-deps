@@ -121,20 +121,29 @@ slopdeps --strict
 slop-deps/
 ├── README.md               ← you are here
 ├── package.json            ← zero external dependencies
+├── action.yml              ← GitHub Action integration
+├── DISTRIBUTION.md         ← private beta architecture & release posture
+├── PRIVACY.md              ← privacy audit & zero-telemetry guarantee
 ├── bin/
 │   └── slop-deps.js        ← standalone CLI runner
-├── src/                    ← core verification engine
+├── src/                    ← core verification engine (~3,180 lines)
 │   ├── index.js            ← directory traversal & extractor coordinator
 │   ├── reporter.js         ← clean compiler-grade diagnostics
+│   ├── sarif.js            ← SARIF 2.1.0 generator for GitHub Code Scanning
 │   ├── builtins.js         ← Node.js, Python, and OS built-in modules
 │   ├── typosquat.js        ← Damerau-Levenshtein & lookalike matcher
 │   ├── pypi-map.js         ← Python import to distribution mappings
+│   ├── fixer.js            ← BYOK AI automated hallucination fixer
+│   ├── ai.js               ← OpenAI / Anthropic / local LLM provider client
+│   ├── update-corpus.js    ← popular packages corpus update utility
+│   ├── corpus.generated.js ← bundled top-tier popularity corpus (npm, PyPI)
 │   ├── extractors/         ← pure JS/TS, Python, and Rust parsers
 │   └── registries/         ← npm, PyPI, Crates.io probes & TTL cache
 ├── installer.iss           ← Inno Setup 6 interactive installer script
 ├── demo/                   ← test fixtures with intentional hallucinations
-└── test/
-    └── run-tests.js        ← 61 deterministic assertion suites
+├── test/
+│   └── run-tests.js        ← 61 deterministic assertion suites
+└── site/                   ← marketing landing page & client-side scanner
 ```
 
 ---
