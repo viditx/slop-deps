@@ -15,5 +15,5 @@ export interface FileScanResult {
   packages: PackageResult[];
   counts: Record<Verdict, number>;
   durationMs: number;
-  error?: 'unsupported' | 'invalid' | 'empty' | 'too_large';
+  error?: 'unsupported' | 'invalid' | 'empty' | 'too_large' | 'timeout';
 }

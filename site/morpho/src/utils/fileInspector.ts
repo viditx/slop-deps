@@ -1,8 +1,11 @@
 import {
   extractCargoToml,
   extractPackageJson,
+  extractPipfile,
   extractPyProjectToml,
   extractRequirementsTxt,
+  extractSetupCfg,
+  extractSetupPy,
 } from '../vendor/slop-deps/manifests.js';
 import { extractJsImports } from '../vendor/slop-deps/js-ts.js';
 import { extractPythonImports } from '../vendor/slop-deps/python.js';
@@ -109,7 +112,8 @@ export function detectFileEcosystem(fileName: string, rawContent?: string): File
     lower.endsWith('.mjs') ||
     lower.endsWith('.cjs') ||
     lower.endsWith('.vue') ||
-    lower.endsWith('.svelte')
+    lower.endsWith('.svelte') ||
+    lower.endsWith('.astro')
   ) {
     return 'npm';
   }
@@ -123,6 +127,7 @@ export function detectFileEcosystem(fileName: string, rawContent?: string): File
     lower.endsWith('setup.cfg') ||
     lower.endsWith('.py') ||
     lower.endsWith('.pyw') ||
+    lower.endsWith('.pyi') ||
     /requirements.*\.txt$/.test(lower)
   ) {
     return 'pypi';
@@ -191,42 +196,16 @@ export function extractHtmlDependencies(
 
   // 2. CDN Script tags (jsdelivr, unpkg, esm.sh, skypack)
   const scriptSrcRegex = /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+  const cdnPkgRegex =
+    /(?:cdn\.jsdelivr\.net\/(?:npm|gh)|unpkg\.com|esm\.sh|cdn\.skypack\.dev(?:\/pin)?)\/(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)(?:@([^\s"'/]+))?/;
   let srcMatch: RegExpExecArray | null;
   while ((srcMatch = scriptSrcRegex.exec(htmlContent)) !== null) {
     const src = srcMatch[1];
-    // jsdelivr: https://cdn.jsdelivr.net/npm/package-name@version/...
-    const jsdelivr = src.match(/(?:cdn\.)?jsdelivr\.net\/(?:npm|gh)\/(@?[^@\/\s"']+)(?:@[^\/\s"']+)?/);
-    if (jsdelivr && jsdelivr[1]) {
-      const name = jsdelivr[1].split('/')[0];
-      pkgs.set(name.toLowerCase(), { name, version: '*', ecosystem: 'npm' });
-      continue;
-    }
-    // unpkg: https://unpkg.com/package-name@version/...
-    const unpkg = src.match(/unpkg\.com\/(@?[^@\/\s"']+)(?:@[^\/\s"']+)?/);
-    if (unpkg && unpkg[1]) {
-      const name = unpkg[1].startsWith('@')
-        ? unpkg[1].split('/').slice(0, 2).join('/')
-        : unpkg[1].split('/')[0];
-      pkgs.set(name.toLowerCase(), { name, version: '*', ecosystem: 'npm' });
-      continue;
-    }
-    // esm.sh: https://esm.sh/package-name@version
-    const esm = src.match(/esm\.sh\/(@?[^@\/\s"']+)(?:@[^\/\s"']+)?/);
-    if (esm && esm[1]) {
-      const name = esm[1].startsWith('@')
-        ? esm[1].split('/').slice(0, 2).join('/')
-        : esm[1].split('/')[0];
-      pkgs.set(name.toLowerCase(), { name, version: '*', ecosystem: 'npm' });
-      continue;
-    }
-    // skypack: https://cdn.skypack.dev/package-name
-    const skypack = src.match(/cdn\.skypack\.dev\/(@?[^@\/\s"']+)(?:@[^\/\s"']+)?/);
-    if (skypack && skypack[1]) {
-      const name = skypack[1].startsWith('@')
-        ? skypack[1].split('/').slice(0, 2).join('/')
-        : skypack[1].split('/')[0];
-      pkgs.set(name.toLowerCase(), { name, version: '*', ecosystem: 'npm' });
-      continue;
+    const match = src.match(cdnPkgRegex);
+    if (match && match[1]) {
+      const name = match[1];
+      const version = match[2] || '*';
+      pkgs.set(name.toLowerCase(), { name, version, ecosystem: 'npm' });
     }
   }
 
@@ -292,7 +271,8 @@ export function extractManifestDependencies(
     lower.endsWith('.mjs') ||
     lower.endsWith('.cjs') ||
     lower.endsWith('.vue') ||
-    lower.endsWith('.svelte')
+    lower.endsWith('.svelte') ||
+    lower.endsWith('.astro')
   ) {
     try {
       const extracted = (extractJsImports as any)(rawContent, fileName);
@@ -320,7 +300,34 @@ export function extractManifestDependencies(
     }>;
   }
 
-  // 5. PyPI requirements.txt
+  // 5. PyPI Pipfile
+  if (lower.endsWith('pipfile')) {
+    return extractPipfile(rawContent) as unknown as Array<{
+      name: string;
+      version: string;
+      ecosystem: 'pypi';
+    }>;
+  }
+
+  // 6. PyPI setup.cfg
+  if (lower.endsWith('setup.cfg')) {
+    return extractSetupCfg(rawContent) as unknown as Array<{
+      name: string;
+      version: string;
+      ecosystem: 'pypi';
+    }>;
+  }
+
+  // 7. PyPI setup.py
+  if (lower.endsWith('setup.py')) {
+    return extractSetupPy(rawContent) as unknown as Array<{
+      name: string;
+      version: string;
+      ecosystem: 'pypi';
+    }>;
+  }
+
+  // 8. PyPI requirements.txt
   if (
     lower.endsWith('requirements.txt') ||
     /requirements.*\.txt$/.test(lower)
@@ -332,8 +339,8 @@ export function extractManifestDependencies(
     }>;
   }
 
-  // 6. Python source files (.py, .pyw, setup.py)
-  if (lower.endsWith('.py') || lower.endsWith('.pyw')) {
+  // 9. Python source files (.py, .pyw, .pyi)
+  if (lower.endsWith('.py') || lower.endsWith('.pyw') || lower.endsWith('.pyi')) {
     try {
       const extracted = (extractPythonImports as any)(rawContent, fileName);
       if (extracted) {
@@ -583,6 +590,17 @@ export async function inspectDroppedFileAsync(
             isBuiltin: false,
             registryChecked: false,
             reason: `resembles ${typosquat.target}`,
+          };
+        }
+        if (popular) {
+          return {
+            name: pkgName,
+            version: dep.version,
+            ecosystem: pkgEco,
+            verdict: 'VERIFIED',
+            isBuiltin: false,
+            registryChecked: true,
+            reason: 'verified via bundled popularity corpus',
           };
         }
         return {

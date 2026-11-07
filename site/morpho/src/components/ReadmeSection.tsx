@@ -13,7 +13,7 @@ export function ReadmeSection() {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText('npx slop-deps');
+      await navigator.clipboard.writeText('slopdeps');
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
@@ -118,7 +118,7 @@ export function ReadmeSection() {
             <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[#040507] border border-[#F5F5F0]/20 p-2.5 sm:px-3.5">
               <div className="flex items-center gap-2 font-terminal text-xs sm:text-sm text-[#F5F5F0]">
                 <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                <span>$ npx slop-deps</span>
+                <span>$ slopdeps</span>
                 <span className="text-[#F5F5F0]/65 text-[11px] hidden sm:inline">
                   or: slopdeps &lt;dir&gt;
                 </span>

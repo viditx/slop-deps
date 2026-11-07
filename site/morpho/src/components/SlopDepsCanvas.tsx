@@ -3,6 +3,7 @@ import { Github } from 'lucide-react';
 import { TopPixelBar } from './TopPixelBar';
 import { SlopDropBox } from './SlopDropBox';
 import { ReadmeSection } from './ReadmeSection';
+import { triggerEightBitCopyChirp } from './HeroTerminalOverlay';
 import {
   applyScrollTargets,
   assignGlyphTargets,
@@ -224,6 +225,7 @@ function createGlyphSprite(
 export function SlopDepsCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const skipIntroRef = useRef<(() => void) | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const [initialSkip] = useState<boolean>(() => shouldSkipIntroOnInit());
   const [uiPhase, setUiPhase] = useState<EnginePhase>(
@@ -242,7 +244,8 @@ export function SlopDepsCanvas() {
 
   const handleCopyHeroChip = async () => {
     try {
-      await navigator.clipboard.writeText('npx slop-deps');
+      await navigator.clipboard.writeText('slopdeps');
+      triggerEightBitCopyChirp(audioCtxRef);
     } catch {
       // Ignore clipboard permission errors
     }
@@ -938,7 +941,7 @@ export function SlopDepsCanvas() {
             onClick={() => void handleCopyHeroChip()}
             className="group inline-flex items-center gap-2.5 sm:gap-3 px-4 py-2.5 sm:px-5 sm:py-3 bg-[#080A0F] border-2 border-[#F5F5F0]/45 hover:border-[#F5F5F0] text-[#F5F5F0] font-terminal text-sm sm:text-base md:text-lg pixel-btn-anim cursor-pointer"
           >
-            <span>$ npx slop-deps</span>
+            <span>$ slopdeps</span>
             <span
               aria-hidden="true"
               className="inline-block w-2 sm:w-2.5 h-3.5 sm:h-4 bg-[#F5F5F0] animate-pulse"

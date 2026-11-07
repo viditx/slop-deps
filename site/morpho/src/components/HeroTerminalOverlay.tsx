@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef } from "react";
 
 export interface HeroTerminalOverlayProps {
-  /** CLI command displayed and copied (default: "npx slop-deps") */
+  /** CLI command displayed and copied (default: "slopdeps") */
   command?: string;
   /** Target DOM element ID for the bottom smooth-scroll trigger */
   targetScrollId?: string;
@@ -31,7 +31,7 @@ type WebkitWindow = Window &
     webkitAudioContext?: typeof AudioContext;
   };
 
-function triggerEightBitCopyChirp(audioCtxRef: React.MutableRefObject<AudioContext | null>): void {
+export function triggerEightBitCopyChirp(audioCtxRef: React.MutableRefObject<AudioContext | null>): void {
   if (typeof window === "undefined") return;
 
   try {
@@ -76,7 +76,7 @@ function triggerEightBitCopyChirp(audioCtxRef: React.MutableRefObject<AudioConte
 }
 
 export const HeroTerminalOverlay: React.FC<HeroTerminalOverlayProps> = ({
-  command = "npx slop-deps",
+  command = "slopdeps",
   targetScrollId = "audit-dropzone",
   enableAudio = true,
   copyResetMs = 2000,

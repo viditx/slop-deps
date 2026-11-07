@@ -106,6 +106,8 @@ function isFlagged(pkg: PackageResult): boolean {
 }
 
 function formatHeadline(result: FileScanResult): string {
+  if (result.error === 'too_large') return 'FILE TOO LARGE (>2MB)';
+  if (result.error === 'timeout') return 'SCAN TIMEOUT';
   if (result.error === 'unsupported') return 'UNSUPPORTED FILE';
   if (result.error === 'invalid') return 'INVALID MANIFEST';
   if (result.error === 'empty') return 'EMPTY MANIFEST';
@@ -119,6 +121,9 @@ function formatHeadline(result: FileScanResult): string {
   }
   if (unchecked > 0) {
     return `NO FLAGGED · ${unchecked} UNCHECKED`;
+  }
+  if (!result.packages || result.packages.length === 0) {
+    return 'NO EXTERNAL PACKAGES';
   }
   return 'NO FLAGGED PACKAGES';
 }
@@ -402,7 +407,7 @@ export function SlopDropBox() {
             UNCHECKED: 0,
           },
           durationMs: Math.round(performance.now() - start),
-          error: 'invalid',
+          error: 'timeout',
         });
       }, SCAN_TIMEOUT_MS);
 
@@ -958,11 +963,15 @@ export function SlopDropBox() {
                               data-testid="result-error-message"
                               className="font-terminal text-xs text-[#F5F5F0]/70"
                             >
-                              {res.error === 'unsupported'
-                                ? 'Unsupported file type. Drop manifests (package.json, requirements.txt, Cargo.toml) or code (.html, .js, .ts, .py, .rs).'
-                                : res.error === 'invalid'
-                                  ? 'Could not parse file syntax or dependencies.'
-                                  : 'No package dependencies or imports found in this file.'}
+                              {res.error === 'too_large'
+                                ? 'File exceeds 2MB browser scan limit. Use the slopdeps CLI for larger files or monorepos.'
+                                : res.error === 'timeout'
+                                  ? 'Network request timed out checking remote registries. Try again or run offline via CLI.'
+                                  : res.error === 'unsupported'
+                                    ? 'Unsupported file type. Drop manifests (package.json, requirements.txt, Cargo.toml) or code (.html, .js, .ts, .py, .rs).'
+                                    : res.error === 'invalid'
+                                      ? 'Could not parse file syntax or dependencies.'
+                                      : 'No package dependencies or imports found in this file.'}
                             </p>
                           ) : (
                             <>
@@ -1100,18 +1109,20 @@ export function SlopDropBox() {
                                         </span>
                                       </div>
 
-                                      <div className="flex items-center gap-2 shrink-0">
-                                        <button
-                                          type="button"
-                                          data-testid="retry-unchecked-btn"
-                                          onClick={() =>
-                                            void handleRetryFile(item.id)
-                                          }
-                                          className="px-2 py-0.5 border border-[#F5F5F0]/30 bg-[#040507] text-[#F5F5F0]/80 hover:text-[#F5F5F0] hover:border-[#F5F5F0] font-pixel text-[9px] uppercase cursor-pointer"
-                                        >
-                                          retry
-                                        </button>
-                                      </div>
+                                      {pkg.ecosystem !== 'crates' && (
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <button
+                                            type="button"
+                                            data-testid="retry-unchecked-btn"
+                                            onClick={() =>
+                                              void handleRetryFile(item.id)
+                                            }
+                                            className="px-2 py-0.5 border border-[#F5F5F0]/30 bg-[#040507] text-[#F5F5F0]/80 hover:text-[#F5F5F0] hover:border-[#F5F5F0] font-pixel text-[9px] uppercase cursor-pointer"
+                                          >
+                                            retry
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -1209,11 +1220,11 @@ export function SlopDropBox() {
                       type="button"
                       data-testid="panel-npx-chip"
                       onClick={() =>
-                        void copyWithFeedback('npx slop-deps', 'panel-npx')
+                        void copyWithFeedback('slopdeps', 'panel-npx')
                       }
                       className="inline-flex items-center justify-center gap-2 px-3.5 py-2 border border-[#F5F5F0]/35 bg-[#080A0F] hover:border-[#F5F5F0] font-terminal text-xs text-[#F5F5F0] cursor-pointer"
                     >
-                      <span>$ npx slop-deps</span>
+                      <span>$ slopdeps</span>
                       <span className="font-pixel text-[9px] uppercase text-[#F5F5F0]/65">
                         {copiedKey === 'panel-npx' ? 'copied' : 'copy'}
                       </span>

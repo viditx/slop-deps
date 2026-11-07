@@ -234,7 +234,7 @@ export function TopPixelBar({ visible, docked, customImageSrc }: TopPixelBarProp
 
   const handleCopyCli = async () => {
     try {
-      await navigator.clipboard.writeText('npx slop-deps');
+      await navigator.clipboard.writeText('slopdeps');
       setCopiedCmd(true);
       setTimeout(() => setCopiedCmd(false), 1800);
     } catch {
@@ -460,7 +460,7 @@ export function TopPixelBar({ visible, docked, customImageSrc }: TopPixelBarProp
 
             <div className="flex items-center justify-between gap-2 bg-[#040507] border-2 border-[#F5F5F0]/20 px-3.5 py-2.5 mb-3 animate-context-item-in">
               <code className="font-terminal text-xs text-[#F5F5F0]">
-                $ npx slop-deps
+                $ slopdeps
               </code>
               <button
                 type="button"

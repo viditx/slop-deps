@@ -2,6 +2,7 @@ import {
   clearRegistryCache,
   detectFileEcosystem,
   inspectDroppedFileAsync,
+  type FileEcosystem,
   type InspectOptions,
 } from '../utils/fileInspector';
 import type { FileScanResult, PackageResult, Verdict } from './types';
@@ -72,10 +73,10 @@ function classifyManifestError(
     }
 
     const hasMalformedHeader = activeLines.some(
-      (l) => l.startsWith('[') && !/^\[[^\]]+\]$/.test(l)
+      (l) => l.startsWith('[') && !/^\[(\[[^\[\]\r\n]+\]|[^\[\]\r\n]+)\]$/.test(l)
     );
     const hasTomlSyntax = activeLines.some(
-      (l) => /^\[[^\]]+\]$/.test(l) || /^[A-Za-z0-9_.-]+\s*=/.test(l)
+      (l) => /^\[(\[[^\[\]\r\n]+\]|[^\[\]\r\n]+)\]$/.test(l) || /^[A-Za-z0-9_.-]+\s*=/.test(l)
     );
 
     if (hasMalformedHeader || !hasTomlSyntax) {
@@ -112,7 +113,7 @@ export async function scanFile(
   const start = performance.now();
   const counts = createEmptyCounts();
   const fileName = file?.name ?? 'unknown';
-  const ecosystem = detectFileEcosystem(fileName);
+  let ecosystem: FileEcosystem = detectFileEcosystem(fileName);
 
   try {
     if (file && typeof file.size === 'number' && file.size > 2_000_000) {
@@ -123,17 +124,6 @@ export async function scanFile(
         counts,
         durationMs: Math.max(0, Math.round(performance.now() - start)),
         error: 'too_large',
-      };
-    }
-
-    if (ecosystem === 'unknown') {
-      return {
-        fileName,
-        ecosystem,
-        packages: [],
-        counts,
-        durationMs: Math.max(0, Math.round(performance.now() - start)),
-        error: 'unsupported',
       };
     }
 
@@ -162,6 +152,20 @@ export async function scanFile(
       };
     }
 
+    // Detect ecosystem with rawContent sniffing fallback
+    ecosystem = detectFileEcosystem(fileName, rawContent);
+
+    if (ecosystem === 'unknown') {
+      return {
+        fileName,
+        ecosystem,
+        packages: [],
+        counts,
+        durationMs: Math.max(0, Math.round(performance.now() - start)),
+        error: 'unsupported',
+      };
+    }
+
     const preError = classifyManifestError(fileName, ecosystem, rawContent);
     if (preError) {
       return {
@@ -187,30 +191,52 @@ export async function scanFile(
       const isReqTxt =
         lower.endsWith('requirements.txt') ||
         /requirements.*\.txt$/.test(lower);
+      const isManifest =
+        lower.endsWith('package.json') ||
+        isReqTxt ||
+        lower.endsWith('pyproject.toml') ||
+        lower.endsWith('cargo.toml') ||
+        lower.endsWith('pipfile') ||
+        lower.endsWith('setup.cfg');
+
+      if (isManifest) {
+        return {
+          fileName,
+          ecosystem: record.ecosystem || ecosystem,
+          packages: [],
+          counts,
+          durationMs: Math.max(0, Math.round(performance.now() - start)),
+          error: isReqTxt ? 'invalid' : 'empty',
+        };
+      }
+
+      // Valid clean source file (.js, .ts, .py, .rs, .html, etc.) with 0 external packages
       return {
         fileName,
         ecosystem: record.ecosystem || ecosystem,
         packages: [],
         counts,
         durationMs: Math.max(0, Math.round(performance.now() - start)),
-        error: isReqTxt ? 'invalid' : 'empty',
+        error: undefined,
       };
     }
 
     const packages: PackageResult[] = [];
 
     for (const rawPkg of record.packages) {
-      const hasValidEco = VALID_ECOSYSTEMS.has(rawPkg.ecosystem);
+      const normalizedEco =
+        rawPkg.ecosystem === 'cargo' ? 'crates' : rawPkg.ecosystem;
+      const hasValidEco = VALID_ECOSYSTEMS.has(normalizedEco);
       const mappedEco: 'npm' | 'pypi' | 'crates' = hasValidEco
-        ? rawPkg.ecosystem
-        : ecosystem;
+        ? normalizedEco
+        : (ecosystem as 'npm' | 'pypi' | 'crates');
 
       let verdict: Verdict = VALID_VERDICTS.has(rawPkg.verdict as Verdict)
         ? (rawPkg.verdict as Verdict)
         : 'UNCHECKED';
 
-      // Never show VERIFIED unless the live registry check actually ran
-      if (verdict === 'VERIFIED' && (!rawPkg.registryChecked || mappedEco === 'crates')) {
+      // Never show VERIFIED unless registry checked or verified via bundled popularity corpus
+      if (verdict === 'VERIFIED' && !rawPkg.registryChecked) {
         verdict = 'UNCHECKED';
       }
 

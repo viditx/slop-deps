@@ -41,6 +41,13 @@ Source: "PRIVACY.md"; DestDir: "{app}"; Flags: ignoreversion
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
 
+[UninstallDelete]
+Type: files; Name: "{app}\bin\*.cmd"
+Type: files; Name: "{app}\bin\*.ps1"
+Type: files; Name: "{app}\bin\*.exe"
+Type: dirifempty; Name: "{app}\bin"
+Type: dirifempty; Name: "{app}"
+
 [Code]
 var
   ShortcutPage: TInputQueryWizardPage;
@@ -218,12 +225,23 @@ begin
     BinDir := ExpandConstant('{app}\bin');
     Shortcut := GetChosenShortcut;
 
-    // 1. Generate <Shortcut>.cmd
-    CmdContent := '@ECHO OFF' + #13#10 + 'node "%~dp0\slop-deps.js" %*' + #13#10;
+    // 1. Generate <Shortcut>.cmd (runs standalone launcher if present, falls back to node)
+    CmdContent :=
+      '@ECHO OFF' + #13#10 +
+      'IF EXIST "%~dp0\slopdeps.exe" (' + #13#10 +
+      '  "%~dp0\slopdeps.exe" %*' + #13#10 +
+      ') ELSE (' + #13#10 +
+      '  node "%~dp0\slop-deps.js" %*' + #13#10 +
+      ')' + #13#10;
     SaveStringToFile(BinDir + '\' + Shortcut + '.cmd', CmdContent, False);
 
     // 2. Generate <Shortcut>.ps1
-    PsContent := '& node "$PSScriptRoot\slop-deps.js" $args' + #13#10;
+    PsContent :=
+      'if (Test-Path "$PSScriptRoot\slopdeps.exe") {' + #13#10 +
+      '  & "$PSScriptRoot\slopdeps.exe" $args' + #13#10 +
+      '} else {' + #13#10 +
+      '  & node "$PSScriptRoot\slop-deps.js" $args' + #13#10 +
+      '}' + #13#10;
     SaveStringToFile(BinDir + '\' + Shortcut + '.ps1', PsContent, False);
 
     // 3. Copy slopdeps.exe to <Shortcut>.exe if shortcut differs
