@@ -318,6 +318,20 @@ export function TopPixelBar({ visible, docked, customImageSrc }: TopPixelBarProp
             </span>
           </button>
 
+          {/* Feedback & Ratings Pill */}
+          <a
+            href="feedback.html"
+            data-testid="pixel-feedback-btn"
+            title="Rate slop-deps and share feedback"
+            className="group relative inline-flex items-center p-[2px] bg-[#F5F5F0]/35 hover:bg-[#F5F5F0] pixel-pill-clip pixel-btn-anim cursor-pointer whitespace-nowrap shrink-0 min-h-[36px] sm:min-h-0"
+          >
+            <span className="pixel-btn-sheen inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 font-pixel text-[10px] sm:text-xs uppercase tracking-[0.08em] pixel-pill-clip transition-colors duration-150 bg-[#080A0F] text-[#F5F5F0]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="hidden sm:inline">feedback</span>
+              <span className="sm:hidden">rate</span>
+            </span>
+          </a>
+
           {/* GitHub Octocat Slot */}
           <a
             href={GITHUB_REPO_URL}

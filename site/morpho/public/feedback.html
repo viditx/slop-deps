@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>slop-deps / feedback</title>
+  <meta name="description" content="Direct telemetry and feedback for slop-deps.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #060709;
+      --card-bg: rgba(13, 15, 20, 0.75);
+      --surface: rgba(255, 255, 255, 0.03);
+      --surface-hover: rgba(255, 255, 255, 0.06);
+      --surface-active: #F5F5F0;
+      --hairline: rgba(255, 255, 255, 0.08);
+      --hairline-light: rgba(255, 255, 255, 0.16);
+      --specular: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+      --text: #EDEDED;
+      --text-muted: #848895;
+      --text-dim: #4E525E;
+      --accent: #10B981;
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 2.5rem 1rem 4rem;
+      position: relative;
+      letter-spacing: -0.011em;
+    }
+
+    /* Ambient noise & subtle top spotlight */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100vw;
+      max-width: 900px;
+      height: 400px;
+      background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(255, 255, 255, 0.04), transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 520px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Top Nav */
+    .top-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      padding: 0 0.25rem;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s var(--ease);
+    }
+
+    .back-btn:hover {
+      color: var(--text);
+    }
+
+    .version-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+
+    /* Machined Glass Card */
+    .card {
+      position: relative;
+      background: var(--card-bg);
+      backdrop-filter: blur(40px) saturate(180%);
+      -webkit-backdrop-filter: blur(40px) saturate(180%);
+      border: 1px solid var(--hairline);
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 15%;
+      right: 15%;
+      height: 1px;
+      background: var(--specular);
+      pointer-events: none;
+    }
+
+    /* Header */
+    .header {
+      margin-bottom: 2rem;
+    }
+
+    .title {
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      color: #FFFFFF;
+      margin-bottom: 0.35rem;
+    }
+
+    .subtitle {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* Form Rows */
+    .field {
+      margin-bottom: 1.6rem;
+    }
+
+    .field-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 0.6rem;
+    }
+
+    .field-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .field-status {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--text);
+    }
+
+    /* Segmented Track (Tactile Apple HIG) */
+    .segmented-track {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .seg-btn {
+      background: transparent;
+      border: none;
+      border-radius: 7px;
+      padding: 0.65rem 0.2rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.2rem;
+      transition: all 0.12s var(--ease);
+      user-select: none;
+    }
+
+    .seg-btn:hover {
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .seg-btn:active {
+      transform: scale(0.96);
+    }
+
+    .seg-btn.active {
+      background: var(--surface-active);
+      color: #060709;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .seg-btn .label {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.62rem;
+      text-transform: lowercase;
+      letter-spacing: 0;
+      opacity: 0.75;
+    }
+
+    /* Beta Control (Dual/Triple Pill) */
+    .beta-track {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .beta-btn {
+      background: transparent;
+      border: none;
+      border-radius: 7px;
+      padding: 0.6rem 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.12s var(--ease);
+    }
+
+    .beta-btn:hover {
+      color: var(--text-muted);
+    }
+
+    .beta-btn:active {
+      transform: scale(0.97);
+    }
+
+    .beta-btn.active {
+      background: var(--surface-active);
+      color: #060709;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Coffee / Tipping Horizontal Strip */
+    .coffee-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.4rem;
+    }
+
+    .coffee-pill {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 0.6rem 0.4rem;
+      text-align: center;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+      transition: all 0.12s var(--ease);
+      user-select: none;
+    }
+
+    .coffee-pill:hover {
+      background: var(--surface-hover);
+      border-color: var(--hairline-light);
+    }
+
+    .coffee-pill:active {
+      transform: scale(0.96);
+    }
+
+    .coffee-pill.active {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.35);
+      color: #FFFFFF;
+    }
+
+    .coffee-pill .val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .coffee-pill .desc {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+
+    .coffee-pill.active .desc {
+      color: #FFFFFF;
+    }
+
+    /* Inputs */
+    .text-field {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 0.7rem 0.85rem;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.825rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s var(--ease);
+    }
+
+    .text-field:focus {
+      border-color: var(--hairline-light);
+      background: rgba(0, 0, 0, 0.7);
+    }
+
+    .text-field::placeholder {
+      color: var(--text-dim);
+    }
+
+    textarea.text-field {
+      min-height: 75px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    /* Submit Button */
+    .submit {
+      width: 100%;
+      background: var(--surface-active);
+      color: #060709;
+      border: none;
+      border-radius: 10px;
+      padding: 0.85rem;
+      font-size: 0.825rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      transition: all 0.12s var(--ease);
+      margin-top: 1.5rem;
+    }
+
+    .submit:hover {
+      background: #FFFFFF;
+      box-shadow: 0 4px 16px rgba(255, 255, 255, 0.12);
+    }
+
+    .submit:active {
+      transform: scale(0.98);
+    }
+
+    .submit:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Success State */
+    .success-panel {
+      display: none;
+      text-align: center;
+      padding: 2.5rem 0.5rem;
+    }
+
+    .success-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .success-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 0.4rem;
+    }
+
+    .success-sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+      margin-bottom: 1.75rem;
+    }
+
+    .return-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      transition: all 0.12s var(--ease);
+    }
+
+    .return-link:hover {
+      background: var(--surface-hover);
+      border-color: var(--hairline-light);
+    }
+
+    .footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--text-dim);
+    }
+
+    .footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      color: var(--text);
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        padding: 1.5rem 1.25rem;
+      }
+      .coffee-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header class="top-nav">
+      <a href="index.html" class="back-btn">
+        <span>&larr;</span>
+        <span>slop-deps</span>
+      </a>
+      <span class="version-tag">alpha telemetry</span>
+    </header>
+
+    <main class="card">
+      <div id="form-wrap">
+        <div class="header">
+          <h1 class="title">Feedback & Ratings</h1>
+          <p class="subtitle">Direct to Vidit (16yo). What works, what broke, or what feels like slop. Be brutal.</p>
+        </div>
+
+        <form id="feedbackForm" action="https://formspree.io/f/mqaevepk" method="POST">
+          <input type="hidden" name="website_score" id="in_web" value="5">
+          <input type="hidden" name="cli_score" id="in_cli" value="5">
+          <input type="hidden" name="wants_beta" id="in_beta" value="Yes">
+          <input type="hidden" name="coffee" id="in_coffee" value="$5 Coffee">
+
+          <!-- 1. Website Score -->
+          <div class="field">
+            <div class="field-header">
+              <label class="field-label">Website Interface</label>
+              <span class="field-status" id="txt_web">5 / 5 &middot; solid</span>
+            </div>
+            <div class="segmented-track" id="track_web">
+              <button type="button" class="seg-btn" data-v="1" onclick="setWeb(1, 'needs rework')">
+                <span>1</span>
+                <span class="label">rough</span>
+              </button>
+              <button type="button" class="seg-btn" data-v="2" onclick="setWeb(2, 'okay')">
+                <span>2</span>
+                <span class="label">mid</span>
+              </button>
+              <button type="button" class="seg-btn" data-v="3" onclick="setWeb(3, 'clean')">
+                <span>3</span>
+                <span class="label">clean</span>
+              </button>
+              <button type="button" class="seg-btn" data-v="4" onclick="setWeb(4, 'sharp')">
+                <span>4</span>
+                <span class="label">sharp</span>
+              </button>
+              <button type="button" class="seg-btn active" data-v="5" onclick="setWeb(5, 'solid')">
+                <span>5</span>
+                <span class="label">elite</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. CLI Score -->
+          <div class="field">
+            <div class="field-header">
+              <label class="field-label">slop-deps Sentinel Engine</label>
+              <span class="field-status" id="txt_cli">5 / 5 &middot; reliable</span>
+            </div>
+            <div class="segmented-track" id="track_cli">
+              <button type="button" class="seg-btn" data-v="1" onclick="setCli(1, 'false positives')">
+                <span>1</span>
+                <span class="label">bugs</span>
+              </button>
+              <button type="button" class="seg-btn" data-v="2" onclick="setCli(2, 'workable')">
+                <span>2</span>
+                <span class="label">okay</span>
+              </button>
+              <button type="button" class="seg-btn" data-v="3" onclick="setCli(3, 'accurate')">
+                <span>3</span>
+                <span class="label">good</span>
+              </button>
+              <button type="button" class="seg-btn" data-v="4" onclick="setCli(4, 'fast scan')">
+                <span>4</span>
+                <span class="label">great</span>
+              </button>
+              <button type="button" class="seg-btn active" data-v="5" onclick="setCli(5, 'reliable')">
+                <span>5</span>
+                <span class="label">flawless</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Actual Beta Question -->
+          <div class="field">
+            <div class="field-header">
+              <label class="field-label">Do you want an actual beta version of this?</label>
+            </div>
+            <div class="beta-track" id="track_beta">
+              <button type="button" class="beta-btn active" onclick="setBeta('Yes, build actual beta', this)">
+                Yes, build it
+              </button>
+              <button type="button" class="beta-btn" onclick="setBeta('Alpha is enough', this)">
+                Alpha is fine
+              </button>
+              <button type="button" class="beta-btn" onclick="setBeta('Not needed', this)">
+                Not needed
+              </button>
+            </div>
+          </div>
+
+          <!-- 4. Support Vidit -->
+          <div class="field">
+            <div class="field-header">
+              <label class="field-label">Support / Coffee</label>
+              <span class="field-status" id="txt_coffee">$5</span>
+            </div>
+            <div class="coffee-strip" id="track_coffee">
+              <div class="coffee-pill active" onclick="setCoffee('$5 Coffee', '$5', this)">
+                <span class="val">$5</span>
+                <span class="desc">Coffee</span>
+              </div>
+              <div class="coffee-pill" onclick="setCoffee('$10 Red Bull', '$10', this)">
+                <span class="val">$10</span>
+                <span class="desc">Fuel</span>
+              </div>
+              <div class="coffee-pill" onclick="setCoffee('$20 Pizza', '$20', this)">
+                <span class="val">$20</span>
+                <span class="desc">Dinner</span>
+              </div>
+              <div class="coffee-pill" onclick="setCoffee('Zero (Just testing)', 'Broke', this)">
+                <span class="val">Free</span>
+                <span class="desc">Respect</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Email (Optional) -->
+          <div class="field">
+            <div class="field-header">
+              <label class="field-label" for="email">Email</label>
+              <span class="field-status" style="color: var(--text-dim)">optional for beta</span>
+            </div>
+            <input type="email" id="email" name="email" class="text-field" placeholder="dev@company.com">
+          </div>
+
+          <!-- 6. Raw Note -->
+          <div class="field">
+            <div class="field-header">
+              <label class="field-label" for="notes">Notes / Critique</label>
+            </div>
+            <textarea id="notes" name="notes" class="text-field" placeholder="What broke? What's confusing? Honest thoughts only..."></textarea>
+          </div>
+
+          <button type="submit" id="submitBtn" class="submit">
+            <span>Send Feedback</span>
+          </button>
+        </form>
+      </div>
+
+      <div id="success-panel" class="success-panel">
+        <div class="success-icon">&check;</div>
+        <h2 class="success-title">Feedback Logged</h2>
+        <p class="success-sub">Sent directly to Vidit. Thanks for helping kill dependency hallucinations.</p>
+        <a href="index.html" class="return-link">&larr; Return to Scanner</a>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>slop-deps</span> &middot; <span>MIT License</span> &middot; <a href="https://github.com/viditx/slop-deps" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </div>
+
+  <script>
+    function setWeb(val, label) {
+      document.getElementById('in_web').value = val;
+      document.getElementById('txt_web').innerHTML = val + ' / 5 &middot; ' + label;
+      document.querySelectorAll('#track_web .seg-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-v') == val);
+      });
+    }
+
+    function setCli(val, label) {
+      document.getElementById('in_cli').value = val;
+      document.getElementById('txt_cli').innerHTML = val + ' / 5 &middot; ' + label;
+      document.querySelectorAll('#track_cli .seg-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-v') == val);
+      });
+    }
+
+    function setBeta(val, el) {
+      document.getElementById('in_beta').value = val;
+      document.querySelectorAll('#track_beta .beta-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    function setCoffee(val, display, el) {
+      document.getElementById('in_coffee').value = val;
+      document.getElementById('txt_coffee').innerText = display;
+      document.querySelectorAll('#track_coffee .coffee-pill').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    const form = document.getElementById('feedbackForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const formWrap = document.getElementById('form-wrap');
+    const successPanel = document.getElementById('success-panel');
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Sending...';
+
+      const formData = new FormData(form);
+
+      try {
+        await fetch(form.action, {
+          method: 'POST',
+          body: formData,
+          headers: { 'Accept': 'application/json' }
+        });
+      } catch (err) {
+        // Fallback local storage
+        const payload = Object.fromEntries(formData.entries());
+        payload.timestamp = new Date().toISOString();
+        const existing = JSON.parse(localStorage.getItem('slop_deps_feedback') || '[]');
+        existing.push(payload);
+        localStorage.setItem('slop_deps_feedback', JSON.stringify(existing));
+      }
+
+      formWrap.style.display = 'none';
+      successPanel.style.display = 'block';
+    });
+  </script>
+</body>
+</html>

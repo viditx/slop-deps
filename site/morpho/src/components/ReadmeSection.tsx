@@ -5,7 +5,7 @@ import { CatState, PixelSittingCat } from './PixelSittingCat';
 const GITHUB_REPO_URL = 'https://github.com/viditx/slop-deps';
 const VERSION = 'v1.0.0-alpha';
 
-type Tab = 'overview' | 'threats' | 'security';
+type Tab = 'overview' | 'threats' | 'security' | 'story';
 
 export function ReadmeSection() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -73,6 +73,17 @@ export function ReadmeSection() {
             }`}
           >
             security
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('story')}
+            className={`px-2.5 py-1 font-pixel text-[9px] uppercase tracking-[0.06em] transition-all cursor-pointer ${
+              activeTab === 'story'
+                ? 'bg-[#F5F5F0] text-[#080A0F] font-bold'
+                : 'text-[#F5F5F0]/60 hover:text-[#F5F5F0]'
+            }`}
+          >
+            my note
           </button>
         </div>
       </div>
@@ -181,15 +192,21 @@ export function ReadmeSection() {
               </div>
             </div>
 
-            {/* Micro spec tokens */}
-            <div className="flex flex-wrap items-center gap-1.5 font-terminal text-[11px] text-[#F5F5F0]/60 pt-1">
-              <span className="text-[#F5F5F0]/85 font-medium">npm · PyPI · crates.io</span>
-              <span className="text-[#F5F5F0]/60">/</span>
-              <span>zero dependencies</span>
-              <span className="text-[#F5F5F0]/60">/</span>
-              <span>Node &gt;= 18</span>
-              <span className="text-[#F5F5F0]/60">/</span>
-              <span>offline corpus ready</span>
+            {/* Micro spec tokens + Feedback link */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#F5F5F0]/10">
+              <div className="flex flex-wrap items-center gap-1.5 font-terminal text-[11px] text-[#F5F5F0]/60">
+                <span className="text-[#F5F5F0]/85 font-medium">npm · PyPI · crates.io</span>
+                <span className="text-[#F5F5F0]/60">/</span>
+                <span>zero dependencies</span>
+                <span className="text-[#F5F5F0]/60">/</span>
+                <span>Node &gt;= 18</span>
+              </div>
+              <a
+                href="feedback.html"
+                className="inline-flex items-center gap-1 font-pixel text-[9px] uppercase tracking-[0.06em] text-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                <span>rate & feedback &rarr;</span>
+              </a>
             </div>
           </div>
         )}
@@ -242,7 +259,7 @@ export function ReadmeSection() {
                   Red-Teamed Architecture
                 </span>
                 <span className="font-terminal text-xs text-emerald-400 font-bold">
-                  61/61 Tests Green
+                  79/79 Tests Green
                 </span>
               </div>
               <p className="font-terminal text-[11px] text-[#F5F5F0]/75 leading-snug">
@@ -258,6 +275,40 @@ export function ReadmeSection() {
                   </span>
                 )
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: MY NOTE (WRITTEN BY VIDIT) */}
+        {activeTab === 'story' && (
+          <div className="flex flex-col gap-3.5 animate-context-item-in">
+            <div className="border border-emerald-400/30 bg-emerald-400/5 p-3.5 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-pixel text-xs text-emerald-400 uppercase tracking-[0.06em]">
+                  My note (written by me)
+                </span>
+                <span className="font-terminal text-[11px] text-[#F5F5F0]/60">
+                  Vidit (16yo)
+                </span>
+              </div>
+              <p className="font-terminal text-xs text-[#F5F5F0]/85 leading-relaxed">
+                hey there, this is vidit i like typing too much so the actual story behind this was one day i was working on my assignments then i saw my ai agent antigravity idle and i was like u lazy shit build something for me he said tell me what to build i got frustrated by him after all tho
+              </p>
+              <p className="font-terminal text-xs text-[#F5F5F0]/85 leading-relaxed">
+                then i wen to zcode devday offer which i claimed i used it for the first time and then showed the code to antigravity antigravity showed brooo fake packages. then i ran antigravity said broo i need solution for this and then i named it slop deps( ai slop dependencies) then i made this in 2 weeks yes 2 weeks i went to claude he told me 4.5/10 and then i went to z.ai yes the one who is best in cybersecurity i guess he checked fixed it and done i know this is not an actual product to be sold i might launch a skill to stop the hallucinated packages so be ready give me ratings here
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <a
+                href="feedback.html"
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#F5F5F0] hover:bg-white text-[#080A0F] font-pixel text-[10px] uppercase font-bold pixel-pill-clip transition-all"
+              >
+                <span>drop your ratings & feedback &rarr;</span>
+              </a>
+              <span className="font-terminal text-[11px] text-[#F5F5F0]/60">
+                Takes 30 seconds
+              </span>
             </div>
           </div>
         )}
