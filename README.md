@@ -126,23 +126,23 @@ We believe in complete honesty about what this engine can and cannot do:
 
 ## 📦 Installation & Usage
 
-### Option 1 — Windows Standalone Installer (Recommended)
+### Option 1 — Run Instantly via npx (Zero Install)
+
+```bash
+# Run scanner immediately on any repository or directory
+npx slop-deps
+
+# Or install globally across your machine
+npm install -g slop-deps
+slopdeps
+```
+
+### Option 2 — Windows Standalone Installer
 
 Download `slopdeps-installer.exe` from [releases](https://github.com/viditx/slop-deps/releases) or the marketing site:
 - Standalone launcher bundled into `%LOCALAPPDATA%\Programs\slop-deps`.
 - Collision-free Windows User PATH registration (`slopdeps.cmd`, `slopdeps.ps1`, `slopdeps.exe`).
 - Clean uninstaller included with safe PATH cleanup.
-
-### Option 2 — From Source / Private Beta
-
-```bash
-git clone https://github.com/viditx/slop-deps.git
-cd slop-deps
-npm link
-slopdeps
-```
-
-*(Note: Public npm publishing via `npx slop-deps` will unlock at public launch — see [DISTRIBUTION.md](DISTRIBUTION.md).)*
 
 ### Option 3 — GitHub Action (CI/CD)
 

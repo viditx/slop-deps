@@ -1,14 +1,19 @@
 # Distribution & Access Policy
 
-## Current Posture: Private Beta
+## Current Posture: Public Alpha (v1.0.0-alpha)
 
-`slop-deps` is currently distributed as a **private security tool**:
+`slop-deps` is officially available across all primary distribution channels:
 
-1. **GitHub Repository:** Private repository under `@viditx`. Access is granted to verified beta users and auditors.
-2. **Binary Installer:** Windows standalone installer (`slopdeps-installer.exe`) bundled with precompiled standalone launcher (`bin/slopdeps.exe`), automatic Node runtime detection, and clean uninstaller lifecycle (`[UninstallDelete]`).
-3. **GitHub Action:** Composite Action runs the vendored, checked-in CLI engine (`bin/slop-deps.js`) directly without making unauthenticated public npm network calls.
-4. **npm Registry Status:** Public npm registry publication (`npm publish`) is deferred until the general public launch. Unauthenticated `npx slop-deps` calls will return 404 until public release.
+1. **npm Registry (Public):** Published under [@viditx](https://www.npmjs.com/~viditx) at [npmjs.com/package/slop-deps](https://www.npmjs.com/package/slop-deps). Run instantly with zero installation via:
+   ```bash
+   npx slop-deps
+   # or install globally
+   npm install -g slop-deps
+   ```
+2. **GitHub Repository (Public):** Open source under MIT license at [github.com/viditx/slop-deps](https://github.com/viditx/slop-deps).
+3. **Binary Installer:** Windows standalone installer (`slopdeps-installer.exe`) bundled with precompiled standalone launcher (`bin/slopdeps.exe`), automatic Node runtime detection, and clean uninstaller lifecycle (`[UninstallDelete]`).
+4. **GitHub Action:** Available for CI pipelines (`viditx/slop-deps@main`).
 
-## Defensive Registration
+## Defensive Protection
 
-Per remediation card `F-03`, defensive registration of `slop-deps` and `slopdeps` on the public npm registry under the owner's 2FA-secured npm account is tracked as an owner action prior to lifting repository privacy.
+Per remediation card `F-03`, `slop-deps` is secured under `@viditx` on npmjs.org. The variant name `slopdeps` is automatically protected by npm's native typosquatting protection against similar package collision.
