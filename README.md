@@ -3,6 +3,26 @@
 > **Architected by a 15-year-old. Engineered by AI.**  
 > Catch hallucinated, non-existent npm, PyPI, and Crates.io packages *before* you run `install` and get owned.
 
+🌐 **Live Web Scanner & Interactive Demo:** [https://slop-deps.pages.dev/](https://slop-deps.pages.dev/)  
+📦 **npm Package:** [`npm install -g slop-deps`](https://www.npmjs.com/package/slop-deps) · `npx slop-deps`
+
+```bash
+# Instant scan (Zero installation required)
+npx slop-deps
+
+# Or install globally on your machine
+npm install -g slop-deps
+slopdeps
+```
+
+[![npm version](https://img.shields.io/npm/v/slop-deps?color=cb3837)](https://www.npmjs.com/package/slop-deps)
+[![Website: slop-deps.pages.dev](https://img.shields.io/badge/Website-slop--deps.pages.dev-00f0ff.svg)](https://slop-deps.pages.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
+[![Tests: 79 Passing](https://img.shields.io/badge/Tests-79%2F79%20PASS-brightgreen.svg)](test/run-tests.js)
+[![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![Platform: Cross--Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-informational.svg)](installer.iss)
+
 ```
 $ slopdeps . --ci
 
@@ -11,12 +31,6 @@ $ slopdeps . --ci
 ```
 
 Zero external dependencies. Zero telemetry. Sub-second execution. Pure Node.js standard library.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
-[![Tests: 79 Passing](https://img.shields.io/badge/Tests-79%2F79%20PASS-brightgreen.svg)](test/run-tests.js)
-[![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
-[![Platform: Cross--Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-informational.svg)](installer.iss)
 
 ---
 
