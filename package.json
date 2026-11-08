@@ -43,7 +43,7 @@
   "bugs": {
     "url": "https://github.com/viditx/slop-deps/issues"
   },
-  "homepage": "https://viditx.github.io/slop-deps/",
+  "homepage": "https://slop-deps.pages.dev/",
   "engines": {
     "node": ">=18.0.0"
   }
