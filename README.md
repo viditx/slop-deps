@@ -109,7 +109,7 @@ slopdeps --strict
 ## My note (written by me)
 
 hey there, this is vidit i like typing too much so the actual story behind this was one day i was working on my assignments then i saw my ai agent antigravity idle and i was like u lazy shit build something for me he said tell me what to build i got  frustrated by him after all tho 
-then i wen to zcode devday offer which i claimed i used it for the first time and then showed the code to antigravity antigravity showed brooo fake packages. then i ran antigravity said broo i need solution for this and then i named it slop deps( ai slop dependencies) then i made this in 2 weeks yes 2 weeks i went to claude he told me 4.5/10 and then i went to z.ai yes the one who is best in cybersecurity i guess he checked fixed it and done i know this is not an actual product to be sold i might launch a skill to stop the hallucinated packages so be ready give me ratings here  
+then i went to zcode devday offer which i claimed i used it for the first time and then showed the code to antigravity antigravity showed brooo fake packages. then i ran antigravity and said broo i need solution for this and then i named it slop deps( ai slop dependencies) then i made this in 2 weeks yes 2 weeks i went to claude he told me 4.5/10 and then i went to z.ai yes the one who is best in cybersecurity i guess. he checked fixed it and done. i know this is not an actual product to be sold i might launch a skill to stop the hallucinated packages so be ready give me ratings here  
 
 👉 **[Rate slop-deps & Drop Feedback](https://slop-deps.pages.dev/feedback.html)**
 
