@@ -95,23 +95,43 @@ slopdeps --strict
 
 ---
 
-## How This Was Built
+## Repository layout
 
-**Engineered with AI agents over weeks of relentless audit cycles.**
+| Path | Purpose |
+|:---|:---|
+| `src/` | Dependency-free scanning engine, extractors, registries, and reporters |
+| `bin/` | Published CLI entry point and Windows executable |
+| `test/` | Deterministic CLI and parser regression fixtures |
+| `site/morpho/` | Browser demo and interactive landing page |
+| `demo/` | Small example projects for trying the scanner |
+| `.github/` | CI, deployment, issue templates, and contribution metadata |
 
-- Enforced pure Node.js standard library with zero external runtime packages.
-- Built an automated 79-test deterministic regression suite (all green).
-- Ran 3 rounds of red-team security audits to hunt down parser blindspots and TOML escapes.
-- Native Inno Setup 6 installer with verified PE resource headers.
+## Development
 
----
+Requires Node.js 18 or newer. The CLI has no runtime dependencies.
 
-## My note (written by me)
+```bash
+npm test
+```
 
-hey there, this is vidit i like typing too much so the actual story behind this was one day i was working on my assignments then i saw my ai agent antigravity idle and i was like u lazy shit build something for me he said tell me what to build i got  frustrated by him after all tho 
-then i went to zcode devday offer which i claimed i used it for the first time and then showed the code to antigravity antigravity showed brooo fake packages. then i ran antigravity and said broo i need solution for this and then i named it slop deps( ai slop dependencies) then i made this in 2 weeks yes 2 weeks i went to claude he told me 4.5/10 and then i went to z.ai yes the one who is best in cybersecurity i guess. he checked fixed it and done. i know this is not an actual product to be sold i might launch a skill to stop the hallucinated packages so be ready give me ratings here  
+The website is maintained as a separate package:
 
-👉 **[Rate slop-deps & Drop Feedback](https://slop-deps.pages.dev/feedback.html)**
+```bash
+npm ci --prefix site/morpho
+npm run lint --prefix site/morpho
+npm run build --prefix site/morpho
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request
+guidelines. For security reports, see [SECURITY.md](SECURITY.md).
+
+## Origin
+
+slop-deps started as a small tool to catch package names invented by AI coding
+assistants. It remains intentionally focused: local-first scanning, explicit
+network behavior, deterministic tests, and no runtime dependencies.
+
+👉 **[Rate slop-deps & drop feedback](https://slop-deps.pages.dev/feedback.html)**
 
 ---
 

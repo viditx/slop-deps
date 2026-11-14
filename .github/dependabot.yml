@@ -1,0 +1,7 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /site/morpho
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
