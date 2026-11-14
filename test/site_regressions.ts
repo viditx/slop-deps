@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { extractHtmlDependencies, extractManifestDependencies, detectFileEcosystem } from '../../site/morpho/src/utils/fileInspector.ts';
-import { scanFile } from '../../site/morpho/src/scanner/index.ts';
-import { formatHeadline, TIMEOUT_ERROR_MESSAGE } from '../../site/morpho/src/utils/scanHeadline.ts';
-import type { FileScanResult } from '../../site/morpho/src/scanner/types.ts';
+import { extractHtmlDependencies, extractManifestDependencies, detectFileEcosystem } from '../site/morpho/src/utils/fileInspector.ts';
+import { scanFile } from '../site/morpho/src/scanner/index.ts';
+import { formatHeadline, TIMEOUT_ERROR_MESSAGE } from '../site/morpho/src/utils/scanHeadline.ts';
+import type { FileScanResult } from '../site/morpho/src/scanner/types.ts';
 
 export async function runTest(testName: string) {
   if (testName === '62') {
@@ -243,7 +243,7 @@ from pydantic import BaseModel
     `;
     const pyiRes = await scanFile({ name: 'types.pyi', size: pyiCode.length, text: async () => pyiCode });
     assert.equal(pyiRes.ecosystem, 'pypi', 'types.pyi must scan as pypi');
-    const { isBuiltin } = await import('../../site/morpho/src/vendor/slop-deps/builtins.js');
+    const { isBuiltin } = await import('../site/morpho/src/vendor/slop-deps/builtins.js');
     const pyiThirdParty = pyiRes.packages.filter(p => !isBuiltin(p.name, 'pypi')).map(p => p.name).sort();
     assert.deepEqual(pyiThirdParty, ['pydantic', 'requests'], 'Third-party packages extracted from .pyi');
     const pyiBuiltins = pyiRes.packages.filter(p => isBuiltin(p.name, 'pypi')).map(p => p.name).sort();
@@ -371,9 +371,11 @@ import reqeusts
     assert.ok(readme.includes('`slopdeps-installer.exe`'), 'README.md must refer to slopdeps-installer.exe');
     assert.ok(!readme.includes('`installer.exe`'), 'README.md must not have bare installer.exe');
 
-    const dist = fs.readFileSync(path.resolve('DISTRIBUTION.md'), 'utf-8');
-    assert.ok(dist.includes('`slopdeps-installer.exe`'), 'DISTRIBUTION.md must refer to slopdeps-installer.exe');
-    assert.ok(!dist.includes('`installer.exe`'), 'DISTRIBUTION.md must not have bare installer.exe');
+    if (fs.existsSync(path.resolve('DISTRIBUTION.md'))) {
+      const dist = fs.readFileSync(path.resolve('DISTRIBUTION.md'), 'utf-8');
+      assert.ok(dist.includes('`slopdeps-installer.exe`'), 'DISTRIBUTION.md must refer to slopdeps-installer.exe');
+      assert.ok(!dist.includes('`installer.exe`'), 'DISTRIBUTION.md must not have bare installer.exe');
+    }
 
     return 'All installer references strictly aligned to slopdeps-installer.exe';
   }

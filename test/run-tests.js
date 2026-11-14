@@ -1014,7 +1014,7 @@ async function run() {
   console.log('  ✔ PASS: CI triggers on [main]; action uploads SARIF even on strict failure\n');
 
   // Site-side regression suite (Tests 62..69, 71..76)
-  const siteRegScript = path.resolve('fixes/verify/site_regressions.ts');
+  const siteRegScript = path.resolve('test/site_regressions.ts');
   const tsxCli = path.resolve('site/morpho/node_modules/tsx/dist/cli.mjs');
 
   if (!fs.existsSync(tsxCli)) {
