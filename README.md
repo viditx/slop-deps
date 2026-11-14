@@ -97,7 +97,7 @@ slopdeps --strict
 
 ## How This Was Built
 
-**Architected by me (16yo), engineered with AI agents over weeks of relentless audit cycles.**
+**Engineered with AI agents over weeks of relentless audit cycles.**
 
 - Enforced pure Node.js standard library with zero external runtime packages.
 - Built an automated 79-test deterministic regression suite (all green).
