@@ -1,6 +1,6 @@
 # slop-deps
 
-> **Architected by a 16-year-old. Engineered by AI.**  
+> **Architected by vidit. Engineered by AI(Antigravity)**  
 > Catch hallucinated, non-existent npm, PyPI, and Crates.io packages *before* you run `install` and get owned.
 
 **Web Scanner:** [slop-deps.pages.dev](https://slop-deps.pages.dev/) &middot; **npm:** [`npm install -g slop-deps`](https://www.npmjs.com/package/slop-deps)
