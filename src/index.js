@@ -578,7 +578,10 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
       critical: findings.filter(f => f.risk === 'CRITICAL').length,
       suspicious: findings.filter(f => f.risk === 'HIGH').length,
       warn: findings.filter(f => f.risk === 'WARN').length,
-      clean: findings.filter(f => f.risk === 'CLEAN').length
+      clean: findings.filter(f => f.risk === 'CLEAN').length,
+      unknown: findings.filter(f => f.exists === null || f.status === 'UNKNOWN' || f.status === 'NETWORK_ERROR').length,
+      exists: findings.filter(f => f.exists === true).length,
+      notExists: findings.filter(f => f.exists === false).length
     }
   };
 }

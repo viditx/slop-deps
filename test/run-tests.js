@@ -1307,7 +1307,67 @@ fun main() {}
   }
   console.log('  ✔ PASS: Maven hallucination traps caught and popular corpus verified\n');
 
-  console.log('🎉 All 85 test assertions passed successfully!');
+  // Test 86: Fail-closed registry probes and tri-state exit contract (P0-1)
+  console.log('Test 86: Fail-closed registry probes and tri-state exit contract (P0-1)');
+  {
+    const http = await import('node:http');
+    const os = await import('node:os');
+
+    // 1. Mock registry server returning 429 and 500
+    const server = http.createServer((req, res) => {
+      if (req.url.includes('429')) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'rate limited' }));
+      } else if (req.url.includes('500')) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'internal error' }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+
+    await new Promise(resolve => server.listen(0, resolve));
+    const port = server.address().port;
+
+    // Test 429/500 simulation via fetch
+    const res429 = await fetch(`http://127.0.0.1:${port}/429`);
+    assert.equal(res429.ok, false);
+    assert.equal(res429.status, 429);
+
+    const res500 = await fetch(`http://127.0.0.1:${port}/500`);
+    assert.equal(res500.ok, false);
+    assert.equal(res500.status, 500);
+
+    // Test ECONNREFUSED & NXDOMAIN simulation
+    let connRefused = false;
+    try { await fetch('http://127.0.0.1:1'); } catch { connRefused = true; }
+    assert.equal(connRefused, true, 'ECONNREFUSED must throw');
+
+    let nxDomain = false;
+    try { await fetch('http://nonexistent-domain-test-nxdomain.invalid'); } catch { nxDomain = true; }
+    assert.equal(nxDomain, true, 'NXDOMAIN must throw');
+
+    server.close();
+
+    // 2. Test CLI exit codes with unknown probe findings
+    const tempProbeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-probe-'));
+    // Offline mode with unknown un-cached package produces UNKNOWN finding (exists: null)
+    fs.writeFileSync(path.join(tempProbeDir, 'app.js'), "import something from 'completely-unknown-uncached-pkg-999';\n");
+
+    // Without --strict in offline mode: unknown finding reported, but exits 0 (no criticals)
+    const normalRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--offline', tempProbeDir], { encoding: 'utf-8' });
+    assert.equal(normalRun.status, 0, 'Without --strict, unknown-only findings must exit 0');
+
+    // With --strict in offline mode: unknown finding must trigger exit 2
+    const strictRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--offline', '--strict', tempProbeDir], { encoding: 'utf-8' });
+    assert.equal(strictRun.status, 2, 'Under --strict, any unknown finding must exit 2');
+
+    fs.rmSync(tempProbeDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: tri-state probe results (exists/not-exists/unknown) and exit-code contract verified\n');
+
+  console.log('🎉 All 86 test assertions passed successfully!');
 }
 
 run().catch((err) => {

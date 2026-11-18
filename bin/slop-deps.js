@@ -192,11 +192,21 @@ Tip: point SLOP_AI_BASE_URL at http://127.0.0.1:11434/v1 (Ollama) to keep fixes 
     process.exit(0);
   }
 
-  if (stats.critical > 0) {
-    process.exit(1);
-  } else if (isStrict && (stats.suspicious > 0 || stats.warn > 0)) {
-    process.exit(2);
+  const hasUnknown = stats.unknown > 0 || (stats.warn > 0 && findings.some(f => f.exists === null));
+  const hasNotExists = stats.critical > 0 || stats.notExists > 0;
+
+  if (isStrict) {
+    if (hasUnknown || stats.suspicious > 0 || stats.warn > 0) {
+      process.exit(2);
+    }
+    if (hasNotExists) {
+      process.exit(1);
+    }
+    process.exit(0);
   } else {
+    if (hasNotExists) {
+      process.exit(1);
+    }
     process.exit(0);
   }
 }
