@@ -1403,7 +1403,113 @@ fun main() {}
   }
   console.log('  ✔ PASS: all lexer blindspot cases emit UNKNOWN and exit 2 under --strict\n');
 
-  console.log('🎉 All 87 test assertions passed successfully!');
+  // Test 88: --fix re-validation, manifest atomicity, and symlink escape guards (P0-3)
+  console.log('Test 88: --fix re-validation and atomicity (P0-3)');
+  {
+    const { applyFixes, verifyReplacementPackage } = await import('../src/fixer.js');
+    const os = await import('node:os');
+
+    // 1. verifyReplacementPackage rejects secondary hallucination and unknown
+    const fakeOk = await verifyReplacementPackage('completely-fake-hallucination-pkg-999-xyz', 'npm');
+    assert.equal(fakeOk, false, 'verifyReplacementPackage must reject non-existent packages');
+
+    // 2. Manifest atomicity: partial failure in manifest aborts entire manifest write
+    const tempManifestDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-fix-manifest-'));
+    const initialPkgJson = JSON.stringify({
+      dependencies: {
+        "fake-dep-one": "^1.0.0",
+        "fake-dep-two": "^2.0.0"
+      }
+    }, null, 2);
+    fs.writeFileSync(path.join(tempManifestDir, 'package.json'), initialPkgJson);
+
+    const manifestFixes = [
+      {
+        file: 'package.json',
+        line: 3,
+        old: '"fake-dep-one": "^1.0.0"',
+        new: '"react": "^1.0.0"' // Valid package
+      },
+      {
+        file: 'package.json',
+        line: 4,
+        old: '"fake-dep-two": "^2.0.0"',
+        new: '"another-hallucination-404-xyz": "^2.0.0"' // Secondary hallucination
+      }
+    ];
+
+    const manifestRes = await applyFixes(tempManifestDir, manifestFixes);
+    assert.equal(manifestRes.every(r => !r.applied), true, 'Manifest write must abort if any replacement is rejected');
+    const diskContent = fs.readFileSync(path.join(tempManifestDir, 'package.json'), 'utf-8');
+    assert.equal(diskContent, initialPkgJson, 'Manifest file on disk must remain unchanged when aborted');
+
+    // 3. Symlink / Junction escape guard: path escaping project root is rejected
+    const tempProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-fix-proj-'));
+    const tempSecretDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-fix-secret-'));
+    fs.writeFileSync(path.join(tempSecretDir, 'secret.js'), 'import fake from "fake-dep";\n');
+
+    const junctionLink = path.join(tempProjectDir, 'linked-folder');
+    let symlinkTested = false;
+    try {
+      fs.symlinkSync(tempSecretDir, junctionLink, 'junction');
+      symlinkTested = true;
+    } catch {
+      // In environments where junction/symlink is unavailable
+    }
+
+    if (symlinkTested) {
+      const escapeFix = [{
+        file: 'linked-folder/secret.js',
+        line: 1,
+        old: '"fake-dep"',
+        new: '"react"'
+      }];
+      const escapeRes = await applyFixes(tempProjectDir, escapeFix);
+      assert.equal(escapeRes[0].applied, false, 'Symlink escaping target directory must be rejected');
+      assert.ok(escapeRes[0].reason.includes('symlink'), 'Reason must mention symlink');
+      const secretContent = fs.readFileSync(path.join(tempSecretDir, 'secret.js'), 'utf-8');
+      assert.equal(secretContent, 'import fake from "fake-dep";\n', 'Escaped target file must not be modified');
+    }
+
+    // 4. Atomic write and original restoration on write failure
+    const tempAtomicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-fix-atomic-'));
+    const atomicFile = path.join(tempAtomicDir, 'app.js');
+    const originalAppCode = 'import oldPkg from "old-pkg";\n';
+    fs.writeFileSync(atomicFile, originalAppCode);
+
+    // Temporarily spy/override fs.rename to simulate failure during atomic rename
+    const fsPromises = (await import('fs')).promises;
+    const origRename = fsPromises.rename;
+    fsPromises.rename = async () => {
+      throw new Error('SIMULATED_ATOMIC_WRITE_FAILURE');
+    };
+
+    try {
+      await applyFixes(tempAtomicDir, [{
+        file: 'app.js',
+        line: 1,
+        old: '"old-pkg"',
+        new: '"react"'
+      }]);
+      assert.fail('applyFixes should throw when atomic rename fails');
+    } catch (err) {
+      assert.ok(err.message.includes('SIMULATED_ATOMIC_WRITE_FAILURE'), 'Expected simulated error');
+    } finally {
+      fsPromises.rename = origRename;
+    }
+
+    const appOnDisk = fs.readFileSync(atomicFile, 'utf-8');
+    assert.equal(appOnDisk, originalAppCode, 'Original file must be restored intact on write error');
+
+    // Clean up
+    fs.rmSync(tempManifestDir, { recursive: true, force: true });
+    fs.rmSync(tempProjectDir, { recursive: true, force: true });
+    fs.rmSync(tempSecretDir, { recursive: true, force: true });
+    fs.rmSync(tempAtomicDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: --fix re-validation, manifest atomicity, and symlink escape guards verified\n');
+
+  console.log('🎉 All 88 test assertions passed successfully!');
 }
 
 run().catch((err) => {

@@ -126,12 +126,9 @@ export async function verifyReplacementPackage(pkgName, ecosystem = 'npm') {
     else if (eco === 'cargo') res = await checkRustPackage(clean);
     else res = await checkMavenPackage(clean);
 
-    if (res && (res.status === 'HALLUCINATED' || res.exists === false)) {
-      return false;
-    }
-    return true;
+    return Boolean(res && res.exists === true);
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -147,6 +144,8 @@ export async function applyFixes(targetDir, fixes, { dryRun = false, verifyRepla
     byFile.get(fx.file).push(fx);
   }
 
+  const realTargetDir = await fs.realpath(targetDir).catch(() => path.resolve(targetDir));
+
   for (const [relFile, fileFixes] of byFile) {
     const abs = path.resolve(targetDir, relFile);
     const relative = path.relative(path.resolve(targetDir), abs);
@@ -154,40 +153,73 @@ export async function applyFixes(targetDir, fixes, { dryRun = false, verifyRepla
       for (const fx of fileFixes) results.push({ ...fx, applied: false, reason: 'file outside target directory' });
       continue;
     }
+
+    // Guard against symlink traversal / escaping target directory
+    let realAbs;
+    try {
+      realAbs = await fs.realpath(abs);
+    } catch (err) {
+      for (const fx of fileFixes) results.push({ ...fx, applied: false, reason: `read error: ${err.code || err.message}` });
+      continue;
+    }
+
+    const realRel = path.relative(realTargetDir, realAbs);
+    if (!realRel || realRel.startsWith('..') || path.isAbsolute(realRel)) {
+      for (const fx of fileFixes) results.push({ ...fx, applied: false, reason: 'rejected: symlinked path points outside target directory' });
+      continue;
+    }
+
+    // Guard .bak path against pre-existing symlinks
+    const bakPath = `${abs}.slop-deps.bak`;
+    try {
+      const bakStat = await fs.lstat(bakPath).catch(() => null);
+      if (bakStat && bakStat.isSymbolicLink()) {
+        for (const fx of fileFixes) results.push({ ...fx, applied: false, reason: 'rejected: backup destination is a symlink' });
+        continue;
+      }
+    } catch {
+      // ignore
+    }
+
     let content;
     try {
       content = await fs.readFile(abs, 'utf-8');
     } catch (err) {
-      for (const fx of fileFixes) results.push({ ...fx, applied: false, reason: `read error: ${err.code}` });
+      for (const fx of fileFixes) results.push({ ...fx, applied: false, reason: `read error: ${err.code || err.message}` });
       continue;
     }
+
     const lines = content.split('\n');
     let changed = 0;
+    const fileResults = [];
+
     for (const fx of fileFixes) {
       const idx = fx.line && fx.line >= 1 && fx.line <= lines.length ? fx.line - 1
         : lines.findIndex(l => l.includes(fx.old));
       if (idx === -1 || !lines[idx] || !lines[idx].includes(fx.old.trim().slice(0, 20))) {
-        results.push({ ...fx, applied: false, reason: 'original line not found' });
+        fileResults.push({ ...fx, applied: false, reason: 'original line not found' });
         continue;
       }
       const before = lines[idx];
       const after = before.replace(fx.old, fx.new);
       if (!isSafeReplacement(before, after, relFile)) {
-        results.push({ ...fx, applied: false, reason: 'rejected: only the package specifier may change (possible injection)' });
+        fileResults.push({ ...fx, applied: false, reason: 'rejected: only the package specifier may change (possible injection)' });
         continue;
       }
       if (after === before) {
-        results.push({ ...fx, applied: false, reason: 'no textual change' });
+        fileResults.push({ ...fx, applied: false, reason: 'no textual change' });
         continue;
       }
       if (verifyReplacement) {
         const eco = (relFile.endsWith('.py') || relFile.endsWith('.pyi') || relFile.endsWith('requirements.txt')) ? 'pypi'
-          : relFile.endsWith('.rs') ? 'cargo' : 'npm';
+          : relFile.endsWith('.rs') ? 'cargo'
+          : (relFile.endsWith('.gradle.kts') || relFile.endsWith('.gradle') || relFile.endsWith('.xml') || relFile.endsWith('.kt') || relFile.endsWith('.kts')) ? 'maven'
+          : 'npm';
         const cand = extractReplacementPackage(after, relFile);
         if (cand) {
           const ok = await verifyReplacementPackage(cand, eco);
           if (!ok) {
-            results.push({
+            fileResults.push({
               ...fx,
               applied: false,
               reason: `rejected: AI suggested replacement '${cand}' does not exist on registry (secondary hallucination)`
@@ -198,13 +230,37 @@ export async function applyFixes(targetDir, fixes, { dryRun = false, verifyRepla
       }
       lines[idx] = after;
       changed++;
-      results.push({ ...fx, applied: true, line: idx + 1, before, after });
+      fileResults.push({ ...fx, applied: true, line: idx + 1, before, after });
     }
+
+    // Manifest atomicity check: never partially write a manifest
+    const isManifest = /\.(json|toml|xml|cfg|txt)$/i.test(relFile) || /^(Pipfile|setup\.py|build\.gradle.*|pom\.xml)$/i.test(path.basename(relFile));
+    if (isManifest && fileResults.some(r => !r.applied)) {
+      for (const r of fileResults) {
+        if (r.applied) {
+          r.applied = false;
+          r.reason = 'manifest write aborted: one or more package replacements in this manifest were rejected or unresolvable';
+        }
+      }
+      changed = 0;
+    }
+
+    results.push(...fileResults);
+
     if (changed > 0 && !dryRun) {
-      // Keep the FIRST backup only: flag 'wx' fails (EEXIST) if a .bak already
-      // exists, so repeated --fix runs never clobber the true pre-fix original.
-      await fs.writeFile(`${abs}.slop-deps.bak`, content, { encoding: 'utf-8', flag: 'wx' }).catch(() => {});
-      await fs.writeFile(abs, lines.join('\n'), 'utf-8');
+      // Keep the FIRST backup only: flag 'wx' fails (EEXIST) if a .bak already exists
+      await fs.writeFile(bakPath, content, { encoding: 'utf-8', flag: 'wx' }).catch(() => {});
+
+      // Atomic write via temp file + rename with rollback
+      const tmpPath = `${abs}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+      try {
+        await fs.writeFile(tmpPath, lines.join('\n'), 'utf-8');
+        await fs.rename(tmpPath, abs);
+      } catch (writeErr) {
+        await fs.unlink(tmpPath).catch(() => {});
+        await fs.writeFile(abs, content, 'utf-8').catch(() => {});
+        throw writeErr;
+      }
     }
   }
 
