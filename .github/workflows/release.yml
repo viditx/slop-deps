@@ -1,0 +1,74 @@
+name: Release Sentinel
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0-alpha)'
+        required: true
+        default: 'v1.0.0-alpha'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Release Artifacts, SBOM & Checksums
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.2.0
+        with:
+          node-version: '20'
+
+      - name: Verify zero runtime dependencies invariant
+        run: |
+          node -e '
+            const pkg = JSON.parse(require("fs").readFileSync("package.json", "utf-8"));
+            const deps = Object.keys(pkg.dependencies || {});
+            const optDeps = Object.keys(pkg.optionalDependencies || {});
+            if (deps.length > 0 || optDeps.length > 0) {
+              console.error("VIOLATION: dependencies must be empty!");
+              process.exit(1);
+            }
+          '
+        shell: bash
+
+      - name: Run test suite
+        run: npm test
+        shell: bash
+
+      - name: Generate SBOM (SPDX-2.3)
+        run: |
+          mkdir -p dist
+          node scripts/generate-sbom.js dist/sbom.spdx.json
+        shell: bash
+
+      - name: Prepare Windows Installer
+        run: |
+          if (Test-Path "site\morpho\public\slopdeps-installer.exe") {
+            Copy-Item "site\morpho\public\slopdeps-installer.exe" -Destination "dist\slopdeps-installer.exe"
+          }
+        shell: pwsh
+
+      - name: Generate SHA-256 Checksums
+        run: node scripts/generate-checksums.js dist dist/SHA256SUMS.txt
+        shell: bash
+
+      - name: Create GitHub Release with Artifacts
+        uses: softprops/action-gh-release@c95fe1489396fe8a9ec87454c7703db340811774 # v2.2.1
+        with:
+          files: |
+            dist/slopdeps-installer.exe
+            dist/sbom.spdx.json
+            dist/SHA256SUMS.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: true

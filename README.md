@@ -96,6 +96,41 @@ slopdeps --strict
 
 ---
 
+## Exit Code Contract
+
+`slop-deps` guarantees a strict, predictable exit code contract for CI/CD automation:
+
+| Code | Meaning | Condition |
+|:---:|:---|:---|
+| `0` | **Clean** | All imports verified to exist on registries or local corpus. |
+| `1` | **Findings** | At least one confirmed hallucinated/non-existent package detected. |
+| `2` | **Strict Failure / Error** | In `--strict` mode: at least one `UNKNOWN` probe/lexer result; or unhandled syntax/tool error. |
+
+---
+
+## Release Artifacts & Code-Signing Status
+
+Every release publishes verified distribution artifacts on GitHub Releases:
+- `slopdeps-installer.exe`: Standalone Windows desktop installer.
+- `SHA256SUMS.txt`: Cryptographic SHA-256 checksums of all release binaries and assets.
+- `sbom.spdx.json`: SPDX-2.3 compliant Software Bill of Materials (SBOM) cataloging all distributed source files with 0 runtime dependencies.
+
+### Verifying Release Integrity
+Verify downloaded assets against published checksums:
+```powershell
+# Windows PowerShell
+Get-FileHash -Algorithm SHA256 slopdeps-installer.exe
+```
+```bash
+# Linux / macOS
+sha256sum -c SHA256SUMS.txt
+```
+
+### Code-Signing Status
+Windows release binaries (`slopdeps-installer.exe`) are currently self-distributed and unsigned (no commercial Authenticode EV certificate). On first run, Windows SmartScreen may present a warning dialog ("Unknown Publisher"). Users can cryptographically verify the installer's authenticity before execution using the published SHA-256 digests in `SHA256SUMS.txt`.
+
+---
+
 ## Popularity Corpus Integrity & Refresh
 
 `slop-deps` bundles an offline popularity corpus verified against a cryptographically secured SHA-256 manifest (`corpus/manifest.json`):
