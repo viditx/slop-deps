@@ -9,6 +9,7 @@ import { isBuiltin } from './builtins.js';
 import { checkNpmPackage } from './registries/npm.js';
 import { checkPyPiPackage } from './registries/pypi.js';
 import { checkRustPackage } from './registries/rust.js';
+import { checkMavenPackage } from './registries/maven.js';
 
 const SYSTEM = `You fix broken package imports in source code. The scanner found imports referencing packages that do not exist on the registry (AI hallucinations) or that typosquat popular packages. For each finding, return the corrected import line: keep the language, style and named bindings identical, only change the package specifier to the real package the code clearly intended. If no real package plausibly matches, set "new" to null. Respond ONLY with a JSON array, no prose, no code fences.`;
 
@@ -87,6 +88,11 @@ export function extractReplacementPackage(line, relFile) {
     if (rsMatch) return rsMatch[1];
   }
 
+  if (lower.endsWith('.gradle.kts') || lower.endsWith('.gradle') || lower.endsWith('.xml') || lower.endsWith('.kt') || lower.endsWith('.kts') || (lower.endsWith('.toml') && !lower.endsWith('cargo.toml'))) {
+    const coordMatch = line.match(/['"]([a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+)(?::[a-zA-Z0-9_.-]+)?['"]/);
+    if (coordMatch) return coordMatch[1];
+  }
+
   const qMatch = line.match(/['"]([^'"]+)['"]/);
   if (qMatch) {
     const raw = qMatch[1].trim();
@@ -108,7 +114,7 @@ export function extractReplacementPackage(line, relFile) {
 export async function verifyReplacementPackage(pkgName, ecosystem = 'npm') {
   if (!pkgName) return false;
   const clean = pkgName.trim();
-  const eco = ecosystem === 'cargo' ? 'cargo' : (ecosystem === 'pypi' ? 'pypi' : 'npm');
+  const eco = ecosystem === 'cargo' ? 'cargo' : (ecosystem === 'maven' ? 'maven' : (ecosystem === 'pypi' ? 'pypi' : 'npm'));
 
   if (isBuiltin(clean, eco)) return true;
   if (isPopularPackage(clean, eco)) return true;
@@ -117,7 +123,8 @@ export async function verifyReplacementPackage(pkgName, ecosystem = 'npm') {
     let res;
     if (eco === 'npm') res = await checkNpmPackage(clean);
     else if (eco === 'pypi') res = await checkPyPiPackage(clean);
-    else res = await checkRustPackage(clean);
+    else if (eco === 'cargo') res = await checkRustPackage(clean);
+    else res = await checkMavenPackage(clean);
 
     if (res && (res.status === 'HALLUCINATED' || res.exists === false)) {
       return false;

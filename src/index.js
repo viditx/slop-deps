@@ -9,6 +9,8 @@ import { isBuiltin, extendBuiltins } from './builtins.js';
 import { checkNpmPackage } from './registries/npm.js';
 import { checkPyPiPackage } from './registries/pypi.js';
 import { checkRustPackage } from './registries/rust.js';
+import { checkMavenPackage } from './registries/maven.js';
+import { extractGradleDependencies, extractLibsVersionsToml, extractPomXml, extractKotlinScriptDependsOn } from './extractors/kotlin.js';
 import { cacheGet, cacheFlush } from './registries/cache.js';
 import { addPopularEntries, isPopularPackage } from './typosquat.js';
 import { extendImportMap } from './pypi-map.js';
@@ -18,18 +20,20 @@ const IGNORED_DIRS = new Set([
   'out', 'coverage', '.cache', 'env', '.env', 'venv', '.venv',
   '.tox', '.nox', '.pytest_cache', '.mypy_cache', '.ruff_cache',
   '.svelte-kit', '.astro', '.output', '.turbo', '.parcel-cache',
-  'site-packages', '__pycache__', '.idea', '.vscode',
+  'site-packages', '__pycache__', '.idea', '.vscode', '.gradle',
   'appdata', 'application data', 'local settings', 'cookies',
   'nethood', 'printhood', 'recent', 'sendto', 'start menu',
   'templates', 'system volume information', '$recycle.bin',
   'program files', 'program files (x86)', 'programdata', 'windows'
 ]);
 
-const SUPPORTED_EXTS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.pyi', '.rs']);
+const SUPPORTED_EXTS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.pyi', '.rs', '.kt', '.kts', '.gradle']);
 const SUPPORTED_MANIFESTS = new Set([
   'package.json', 'requirements.txt', 'pyproject.toml', 'setup.cfg',
   'pipfile', 'setup.py', 'cargo.toml', 'constraints.txt',
-  'tsconfig.json', 'jsconfig.json'
+  'tsconfig.json', 'jsconfig.json',
+  'build.gradle.kts', 'build.gradle', 'settings.gradle.kts', 'settings.gradle',
+  'libs.versions.toml', 'pom.xml'
 ]);
 
 function isSupportedFile(filename) {
@@ -380,6 +384,46 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
       }
       continue;
     }
+
+    // Gradle build scripts (build.gradle.kts, build.gradle, settings.gradle.kts, settings.gradle, *.gradle)
+    if (basename === 'build.gradle.kts' || basename === 'build.gradle' || basename === 'settings.gradle.kts' || basename === 'settings.gradle' || ext === '.gradle') {
+      const content = await safeReadFile(file);
+      if (content !== null) {
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractGradleDependencies(content, rel));
+      }
+      continue;
+    }
+
+    // Gradle Version Catalogs (libs.versions.toml)
+    if (basename === 'libs.versions.toml' || (ext === '.toml' && file.toLowerCase().includes('gradle'))) {
+      const content = await safeReadFile(file);
+      if (content !== null) {
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractLibsVersionsToml(content, rel));
+      }
+      continue;
+    }
+
+    // Maven POM
+    if (basename === 'pom.xml') {
+      const content = await safeReadFile(file);
+      if (content !== null) {
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractPomXml(content, rel));
+      }
+      continue;
+    }
+
+    // Kotlin source & script files (.kt, .kts)
+    if (ext === '.kt' || ext === '.kts') {
+      const content = await safeReadFile(file);
+      if (content !== null) {
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractKotlinScriptDependsOn(content, rel));
+      }
+      continue;
+    }
   }
 
   // Filter builtins/local modules and group by package key (ecosystem:name)
@@ -510,6 +554,8 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
           check = await checkNpmPackage(target.name);
         } else if (target.ecosystem === 'cargo') {
           check = await checkRustPackage(target.name);
+        } else if (target.ecosystem === 'maven') {
+          check = await checkMavenPackage(target.name);
         } else {
           check = await checkPyPiPackage(target.name);
         }

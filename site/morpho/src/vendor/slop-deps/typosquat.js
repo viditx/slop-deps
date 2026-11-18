@@ -111,16 +111,31 @@ export const RUST_POPULAR = [
   'tar', 'zip', 'flate2', 'csv', 'ron', 'toml', 'config', 'dotenvy'
 ];
 
+export const MAVEN_POPULAR = [
+  'com.squareup.okhttp3:okhttp', 'com.squareup.retrofit2:retrofit', 'com.google.code.gson:gson',
+  'org.jetbrains.kotlinx:kotlinx-coroutines-core', 'org.jetbrains.kotlinx:kotlinx-serialization-json',
+  'androidx.core:core-ktx', 'androidx.compose.ui:ui', 'androidx.compose.material3:material3',
+  'androidx.activity:activity-compose', 'androidx.lifecycle:lifecycle-runtime-ktx',
+  'com.fasterxml.jackson.core:jackson-databind', 'com.google.guava:guava',
+  'org.slf4j:slf4j-api', 'ch.qos.logback:logback-classic',
+  'org.springframework.boot:spring-boot-starter', 'io.ktor:ktor-client-core',
+  'org.junit.jupiter:junit-jupiter', 'org.mockito:mockito-core', 'io.mockk:mockk',
+  'io.reactivex.rxjava3:rxjava', 'org.apache.commons:commons-lang3',
+  'com.android.tools.build:gradle', 'io.getstream:stream-webrtc-android'
+];
+
 const CORPUS = {
   cargo: [...new Set(RUST_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) })),
   npm: [...new Set(NPM_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) })),
-  pypi: [...new Set(PYPI_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) }))
+  pypi: [...new Set(PYPI_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) })),
+  maven: [...new Set(MAVEN_POPULAR)].map(canonical => ({ canonical, normalized: normalizeName(canonical) }))
 };
 
 const CORPUS_EXACT = {
   npm: new Set(NPM_POPULAR),
   pypi: new Set(PYPI_POPULAR),
-  cargo: new Set(RUST_POPULAR)
+  cargo: new Set(RUST_POPULAR),
+  maven: new Set(MAVEN_POPULAR)
 };
 
 function normalizeName(name) {

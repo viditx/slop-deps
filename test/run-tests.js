@@ -1176,7 +1176,138 @@ async function run() {
   }
   console.log('  ✔ PASS: fixer secondary hallucination guard prevents circular AI traps\n');
 
-  console.log('🎉 All 79 test assertions passed successfully!');
+  // Test 80: Kotlin / Gradle dependency extraction (Kotlin DSL & Groovy DSL)
+  console.log('Test 80: Kotlin / Gradle dependency extraction');
+  {
+    const { extractGradleDependencies } = await import('../src/extractors/kotlin.js');
+    const ktsSample = `
+plugins {
+    id("com.android.application") version "8.7.3"
+    id("java") // core plugin, must be ignored
+}
+dependencies {
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(project(":core")) // local project, must be ignored
+}
+`;
+    const ktsDeps = extractGradleDependencies(ktsSample, 'build.gradle.kts');
+    const ktsNames = new Set(ktsDeps.map(d => d.name));
+    assert.ok(ktsNames.has('com.android.application:com.android.application.gradle.plugin'), 'Missing gradle plugin');
+    assert.ok(ktsNames.has('androidx.compose:compose-bom'), 'Missing BOM dependency');
+    assert.ok(ktsNames.has('androidx.compose.ui:ui'), 'Missing ui dependency');
+    assert.ok(ktsNames.has('com.squareup.okhttp3:okhttp'), 'Missing okhttp dependency');
+    assert.ok(!ktsNames.has('java:java.gradle.plugin'), 'Core java plugin must be ignored');
+    assert.ok(!ktsNames.has('project::core'), 'Local project dependency must be ignored');
+
+    const groovySample = `
+dependencies {
+    implementation 'io.ktor:ktor-client-core:2.3.7'
+    implementation group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
+}
+`;
+    const groovyDeps = extractGradleDependencies(groovySample, 'build.gradle');
+    const groovyNames = new Set(groovyDeps.map(d => d.name));
+    assert.ok(groovyNames.has('io.ktor:ktor-client-core'), 'Missing Groovy string dependency');
+    assert.ok(groovyNames.has('org.apache.commons:commons-lang3'), 'Missing Groovy named argument dependency');
+  }
+  console.log('  ✔ PASS: Gradle dependencies (Kotlin DSL, Groovy DSL, plugins, platform) extracted cleanly\n');
+
+  // Test 81: Gradle Version Catalog extraction (libs.versions.toml)
+  console.log('Test 81: Gradle Version Catalog extraction (libs.versions.toml)');
+  {
+    const { extractLibsVersionsToml } = await import('../src/extractors/kotlin.js');
+    const tomlSample = `
+[libraries]
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+retrofit = { module = "com.squareup.retrofit2:retrofit", version = "2.9.0" }
+gson = "com.google.code.gson:gson:2.10.1"
+
+[plugins]
+android-app = { id = "com.android.application", version = "8.7.3" }
+`;
+    const tomlDeps = extractLibsVersionsToml(tomlSample, 'gradle/libs.versions.toml');
+    const tomlNames = new Set(tomlDeps.map(d => d.name));
+    assert.ok(tomlNames.has('com.squareup.okhttp3:okhttp'), 'Missing okhttp from TOML');
+    assert.ok(tomlNames.has('com.squareup.retrofit2:retrofit'), 'Missing retrofit from TOML');
+    assert.ok(tomlNames.has('com.google.code.gson:gson'), 'Missing gson from TOML');
+    assert.ok(tomlNames.has('com.android.application:com.android.application.gradle.plugin'), 'Missing plugin from TOML');
+  }
+  console.log('  ✔ PASS: libs.versions.toml libraries and plugins extracted cleanly\n');
+
+  // Test 82: Maven pom.xml extraction
+  console.log('Test 82: Maven pom.xml extraction');
+  {
+    const { extractPomXml } = await import('../src/extractors/kotlin.js');
+    const pomSample = `
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
+      <version>4.12.0</version>
+    </dependency>
+    <dependency>
+      <groupId>\${project.groupId}</groupId>
+      <artifactId>local-subproject</artifactId>
+    </dependency>
+  </dependencies>
+</project>
+`;
+    const pomDeps = extractPomXml(pomSample, 'pom.xml');
+    assert.equal(pomDeps.length, 1);
+    assert.equal(pomDeps[0].name, 'com.squareup.okhttp3:okhttp');
+  }
+  console.log('  ✔ PASS: pom.xml dependencies extracted, placeholders skipped\n');
+
+  // Test 83: Kotlin script @file:DependsOn extraction
+  console.log('Test 83: Kotlin script @file:DependsOn extraction');
+  {
+    const { extractKotlinScriptDependsOn } = await import('../src/extractors/kotlin.js');
+    const scriptSample = `
+@file:DependsOn("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
+@DependsOn("com.google.code.gson:gson:2.10.1")
+fun main() {}
+`;
+    const scriptDeps = extractKotlinScriptDependsOn(scriptSample, 'script.main.kts');
+    const scriptNames = new Set(scriptDeps.map(d => d.name));
+    assert.ok(scriptNames.has('org.jetbrains.kotlinx:kotlinx-coroutines-core'), 'Missing coroutines from script');
+    assert.ok(scriptNames.has('com.google.code.gson:gson'), 'Missing gson from script');
+  }
+  console.log('  ✔ PASS: @file:DependsOn dependencies extracted from Kotlin script\n');
+
+  // Test 84: Maven registry verification against live Maven Central & Google Maven
+  console.log('Test 84: Maven registry verification (Maven Central & Google Maven)');
+  {
+    const { checkMavenPackage } = await import('../src/registries/maven.js');
+    const okhttp = await checkMavenPackage('com.squareup.okhttp3:okhttp');
+    assert.equal(okhttp.status, 'VERIFIED');
+    assert.equal(okhttp.risk, 'CLEAN');
+    assert.equal(okhttp.exists, true);
+
+    const composeUi = await checkMavenPackage('androidx.compose.ui:ui');
+    assert.equal(composeUi.status, 'VERIFIED');
+    assert.equal(composeUi.risk, 'CLEAN');
+    assert.equal(composeUi.exists, true);
+  }
+  console.log('  ✔ PASS: Live Maven Central and Google Maven artifacts verified cleanly\n');
+
+  // Test 85: Maven hallucination trap detection & Typosquat candidate detection
+  console.log('Test 85: Maven hallucination trap detection');
+  {
+    const { checkMavenPackage } = await import('../src/registries/maven.js');
+    const fake = await checkMavenPackage('com.fake.ai:hallucinated-tensor-nonexistent-404');
+    assert.equal(fake.status, 'HALLUCINATED');
+    assert.equal(fake.risk, 'CRITICAL');
+    assert.equal(fake.exists, false);
+
+    const { isPopularPackage } = await import('../src/typosquat.js');
+    assert.equal(isPopularPackage('com.squareup.okhttp3:okhttp', 'maven'), true);
+  }
+  console.log('  ✔ PASS: Maven hallucination traps caught and popular corpus verified\n');
+
+  console.log('🎉 All 85 test assertions passed successfully!');
 }
 
 run().catch((err) => {

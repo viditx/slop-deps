@@ -55,7 +55,15 @@ export const RUST_BUILTINS = new Set([
   'proc_macro2', 'quote', 'syn' // build-time universals pulled via macros, not Cargo lines
 ]);
 
-const EXTRA_BUILTINS = { npm: new Set(), pypi: new Set(), cargo: new Set() };
+export const MAVEN_BUILTINS = new Set([
+  'gradleapi', 'localgroovy', 'gradletestkit',
+  'java', 'javax', 'android',
+  'org.jetbrains.kotlin:kotlin-stdlib',
+  'org.jetbrains.kotlin:kotlin-reflect',
+  'org.jetbrains.kotlin:kotlin-test'
+]);
+
+const EXTRA_BUILTINS = { npm: new Set(), pypi: new Set(), cargo: new Set(), maven: new Set() };
 
 // Runtime extension for .slopdepsrc.json (private toolchains, internal SDKs)
 export function extendBuiltins(ecosystem, names) {
@@ -81,6 +89,10 @@ export function isBuiltin(pkgName, ecosystem) {
   if (ecosystem === 'cargo') {
     const lower = pkgName.toLowerCase();
     return RUST_BUILTINS.has(lower) || EXTRA_BUILTINS.cargo.has(lower);
+  }
+  if (ecosystem === 'maven') {
+    const lower = pkgName.toLowerCase();
+    return MAVEN_BUILTINS.has(lower) || EXTRA_BUILTINS.maven.has(lower);
   }
   return false;
 }

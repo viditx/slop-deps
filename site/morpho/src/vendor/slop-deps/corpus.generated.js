@@ -4187,10 +4187,37 @@ export const CRATES_POPULAR = [
   "zip"
 ];
 
+export const MAVEN_POPULAR = [
+  "androidx.activity:activity-compose",
+  "androidx.compose.material3:material3",
+  "androidx.compose.ui:ui",
+  "androidx.core:core-ktx",
+  "androidx.lifecycle:lifecycle-runtime-ktx",
+  "ch.qos.logback:logback-classic",
+  "com.android.tools.build:gradle",
+  "com.fasterxml.jackson.core:jackson-databind",
+  "com.google.code.gson:gson",
+  "com.google.guava:guava",
+  "com.squareup.okhttp3:okhttp",
+  "com.squareup.retrofit2:retrofit",
+  "io.getstream:stream-webrtc-android",
+  "io.ktor:ktor-client-core",
+  "io.mockk:mockk",
+  "io.reactivex.rxjava3:rxjava",
+  "org.apache.commons:commons-lang3",
+  "org.jetbrains.kotlinx:kotlinx-coroutines-core",
+  "org.jetbrains.kotlinx:kotlinx-serialization-json",
+  "org.junit.jupiter:junit-jupiter",
+  "org.mockito:mockito-core",
+  "org.slf4j:slf4j-api",
+  "org.springframework.boot:spring-boot-starter"
+];
+
 export const CORPUS = {
   npm: NPM_POPULAR,
   pypi: PYPI_POPULAR,
   crates: CRATES_POPULAR,
+  maven: MAVEN_POPULAR,
 };
 
 export default CORPUS;

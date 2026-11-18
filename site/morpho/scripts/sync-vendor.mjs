@@ -21,14 +21,17 @@ async function syncVendor() {
   const npmBase = typoModule.NPM_POPULAR || [];
   const pypiBase = typoModule.PYPI_POPULAR || [];
   const rustBase = typoModule.RUST_POPULAR || [];
+  const mavenBase = typoModule.MAVEN_POPULAR || [];
 
   const allNpm = [...new Set([...npmBase, ...(gen.NPM_GENERATED || [])])].sort();
   const allPypi = [...new Set([...pypiBase, ...(gen.PYPI_GENERATED || [])])].sort();
   const allCrates = [...new Set(rustBase)].sort();
+  const allMaven = [...new Set(mavenBase)].sort();
 
   console.log(`  ✓ npm packages: ${allNpm.length}`);
   console.log(`  ✓ pypi packages: ${allPypi.length}`);
   console.log(`  ✓ crates packages: ${allCrates.length}`);
+  console.log(`  ✓ maven packages: ${allMaven.length}`);
 
   // 2. Generate unified web corpus
   const targetCorpusPath = path.join(vendorDir, 'corpus.generated.js');
@@ -39,10 +42,13 @@ export const PYPI_POPULAR = ${JSON.stringify(allPypi, null, 2)};
 
 export const CRATES_POPULAR = ${JSON.stringify(allCrates, null, 2)};
 
+export const MAVEN_POPULAR = ${JSON.stringify(allMaven, null, 2)};
+
 export const CORPUS = {
   npm: NPM_POPULAR,
   pypi: PYPI_POPULAR,
   crates: CRATES_POPULAR,
+  maven: MAVEN_POPULAR,
 };
 
 export default CORPUS;
@@ -60,6 +66,7 @@ export default CORPUS;
     { src: 'src/extractors/js-ts.js', dest: 'js-ts.js' },
     { src: 'src/extractors/python.js', dest: 'python.js' },
     { src: 'src/extractors/rust.js', dest: 'rust.js' },
+    { src: 'src/extractors/kotlin.js', dest: 'kotlin.js' },
   ];
 
   for (const { src, dest } of filesToSync) {
