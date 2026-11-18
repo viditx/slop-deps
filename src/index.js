@@ -14,6 +14,7 @@ import { extractGradleDependencies, extractLibsVersionsToml, extractPomXml, extr
 import { cacheGet, cacheFlush } from './registries/cache.js';
 import { addPopularEntries, isPopularPackage } from './typosquat.js';
 import { extendImportMap } from './pypi-map.js';
+import { redactSecrets } from './redact.js';
 
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
@@ -578,17 +579,19 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
     await cacheFlush();
   }
 
+  const sanitizedFindings = redactSecrets(findings);
+
   return {
-    findings,
+    findings: sanitizedFindings,
     stats: {
-      total: findings.length,
-      critical: findings.filter(f => f.risk === 'CRITICAL').length,
-      suspicious: findings.filter(f => f.risk === 'HIGH').length,
-      warn: findings.filter(f => f.risk === 'WARN').length,
-      clean: findings.filter(f => f.risk === 'CLEAN').length,
-      unknown: findings.filter(f => f.exists === null || f.status === 'UNKNOWN' || f.status === 'NETWORK_ERROR').length,
-      exists: findings.filter(f => f.exists === true).length,
-      notExists: findings.filter(f => f.exists === false).length
+      total: sanitizedFindings.length,
+      critical: sanitizedFindings.filter(f => f.risk === 'CRITICAL').length,
+      suspicious: sanitizedFindings.filter(f => f.risk === 'HIGH').length,
+      warn: sanitizedFindings.filter(f => f.risk === 'WARN').length,
+      clean: sanitizedFindings.filter(f => f.risk === 'CLEAN').length,
+      unknown: sanitizedFindings.filter(f => f.exists === null || f.status === 'UNKNOWN' || f.status === 'NETWORK_ERROR').length,
+      exists: sanitizedFindings.filter(f => f.exists === true).length,
+      notExists: sanitizedFindings.filter(f => f.exists === false).length
     }
   };
 }

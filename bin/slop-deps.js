@@ -174,13 +174,14 @@ Tip: point SLOP_AI_BASE_URL at http://127.0.0.1:11434/v1 (Ollama) to keep fixes 
       console.error(`\x1b[31m✖ AI fix failed:\x1b[0m ${err.message}\n`);
       process.exit(2);
     }
+    const { redactSecrets } = await import('../src/redact.js');
     const applied = await applyFixes(targetDir, fixes);
     let changed = 0;
     for (const r of applied.filter(x => x.applied)) {
       changed++;
-      console.log(`  \x1b[32m✔\x1b[0m ${r.file}:${r.line}`);
-      console.log(`    \x1b[31m- ${r.before.trim()}\x1b[0m`);
-      console.log(`    \x1b[32m+ ${r.after.trim()}\x1b[0m`);
+      console.log(`  \x1b[32m✔\x1b[0m ${redactSecrets(r.file)}:${r.line}`);
+      console.log(`    \x1b[31m- ${redactSecrets(r.before.trim())}\x1b[0m`);
+      console.log(`    \x1b[32m+ ${redactSecrets(r.after.trim())}\x1b[0m`);
     }
     const skipped = applied.filter(x => !x.applied).length;
     if (changed > 0) console.log(`\n  ${changed} line(s) fixed. Backups: *.slop-deps.bak`);

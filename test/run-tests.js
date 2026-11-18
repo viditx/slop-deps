@@ -1509,7 +1509,58 @@ fun main() {}
   }
   console.log('  ✔ PASS: --fix re-validation, manifest atomicity, and symlink escape guards verified\n');
 
-  console.log('🎉 All 88 test assertions passed successfully!');
+  // Test 89: No secrets in output (P0-4)
+  console.log('Test 89: Secrets and token redaction (P0-4)');
+  {
+    const { redactSecrets } = await import('../src/redact.js');
+    const os = await import('node:os');
+
+    // 1. Direct unit verification of all token patterns
+    const secretPayload = {
+      npmToken: 'npm_abcdefghijklmnopqrstuvwxyz1234567890',
+      ghp: 'ghp_123456789012345678901234567890123456',
+      ghPat: 'github_pat_11AAAAAAA0123456789012_abcdefghijklmnopqrstuvwxyz0123456789',
+      glPat: 'glpat-abcdefghijklmnopqrst12',
+      slack: ['xoxb', '1234567890', 'abcdefghijklmnopqrstuvwxyz'].join('-'),
+      openai: 'sk-1234567890abcdefghijklmnopqrstuvwxyz123456',
+      anthropic: 'sk-ant-1234567890abcdefghijklmnopqrstuvwxyz12',
+      pypi: 'pypi-123456789012345678901234567890123456',
+      aws: 'AKIAIOSFODNN7EXAMPLE',
+      bearer: 'Bearer abcdef1234567890abcdef1234567890',
+      urlAuth: 'https://admin:mySuperSecretPassword123@private-registry.internal.com/pkg',
+      npmrc: '//registry.npmjs.org/:_authToken=npm_999999999999999999999999999999999999'
+    };
+
+    const redacted = redactSecrets(secretPayload);
+    for (const [key, val] of Object.entries(redacted)) {
+      assert.ok(!val.includes('abcdefghijklmnopqrstuvwxyz1234567890'), `${key} must be redacted`);
+      assert.ok(!val.includes('mySuperSecretPassword123'), `${key} must be redacted`);
+      assert.ok(!val.includes('AKIAIOSFODNN7EXAMPLE'), `${key} must be redacted`);
+      assert.ok(val.includes('[REDACTED'), `${key} must contain [REDACTED`);
+    }
+
+    // 2. Integration verification: scanner and CLI output must never leak tokens
+    const tempSecretDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-secret-scan-'));
+    const secretToken = 'ghp_TESTSECRETTOKENFORLEAKVERIFICATION99999';
+    fs.writeFileSync(
+      path.join(tempSecretDir, 'index.js'),
+      `// Internal comment with secret: ${secretToken}\nimport bad from 'hallucinated-dep-sk-1234567890abcdefghijklmnopqrstuvwxyz';\n`
+    );
+
+    const scanRes = await scanDirectory(tempSecretDir, { allowConfig: false });
+    const jsonOutput = JSON.stringify(scanRes);
+    assert.ok(!jsonOutput.includes(secretToken), 'scanDirectory result must not contain token');
+    assert.ok(!jsonOutput.includes('sk-1234567890abcdefghijklmnopqrstuvwxyz'), 'scanDirectory result must not contain OpenAI key');
+
+    const cliRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--json', tempSecretDir], { encoding: 'utf-8' });
+    assert.ok(!cliRun.stdout.includes(secretToken), 'CLI stdout must not contain token');
+    assert.ok(!cliRun.stdout.includes('sk-1234567890abcdefghijklmnopqrstuvwxyz'), 'CLI stdout must not contain OpenAI key');
+
+    fs.rmSync(tempSecretDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: secrets and credentials redacted from all output paths\n');
+
+  console.log('🎉 All 89 test assertions passed successfully!');
 }
 
 run().catch((err) => {
