@@ -1,6 +1,7 @@
 import { resolvePyPiDistributionName } from '../pypi-map.js';
 import { findTyposquatCandidate, typosquatSuggestion } from '../typosquat.js';
 import { cacheGet, cacheSet } from './cache.js';
+import { fetchWithRetry } from './http.js';
 
 const CACHE = new Map();
 const IN_FLIGHT = new Map();
@@ -36,11 +37,8 @@ export async function checkPyPiPackage(pkgName) {
 
     const url = `https://pypi.org/pypi/${encodeURIComponent(distName)}/json`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-
     try {
-      const res = await fetch(url, { signal: controller.signal });
+      const res = await fetchWithRetry(url);
 
       if (res.status === 404) {
         const suggestion = typosquatSuggestion(distName.toLowerCase(), 'pypi');
@@ -137,8 +135,6 @@ export async function checkPyPiPackage(pkgName) {
         exists: null,
         message: `Failed to query PyPI: ${err.message}`
       };
-    } finally {
-      clearTimeout(timeout);
     }
   })();
 

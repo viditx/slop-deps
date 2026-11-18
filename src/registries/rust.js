@@ -1,5 +1,6 @@
 import { findTyposquatCandidate, typosquatSuggestion } from '../typosquat.js';
 import { cacheGet, cacheSet } from './cache.js';
+import { fetchWithRetry } from './http.js';
 
 const CRATES_URL = 'https://crates.io/api/v1/crates/';
 // crates.io mandates a descriptive User-Agent for API clients
@@ -49,12 +50,9 @@ export async function checkRustPackage(pkgName) {
     let lastStatus = null;
 
     for (const variant of variants) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
       try {
-        const res = await fetch(`${CRATES_URL}${encodeURIComponent(variant)}`, {
+        const res = await fetchWithRetry(`${CRATES_URL}${encodeURIComponent(variant)}`, {
           headers: { 'User-Agent': UA },
-          signal: controller.signal,
         });
         lastStatus = res.status;
         if (res.status === 404) continue;
@@ -72,8 +70,6 @@ export async function checkRustPackage(pkgName) {
           name: pkgName, ecosystem: 'cargo', status: 'NETWORK_ERROR', risk: 'WARN', exists: null,
           message: `Failed to query crates.io: ${err.message}`
         };
-      } finally {
-        clearTimeout(timer);
       }
     }
 

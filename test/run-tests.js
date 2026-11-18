@@ -1560,7 +1560,67 @@ fun main() {}
   }
   console.log('  ✔ PASS: secrets and credentials redacted from all output paths\n');
 
-  console.log('🎉 All 89 test assertions passed successfully!');
+  // Test 90: Hardened HTTP client with retry, backoff, and timeouts (P1-1)
+  console.log('Test 90: Hardened HTTP client (P1-1)');
+  {
+    const http = await import('node:http');
+    const { fetchWithRetry, USER_AGENT } = await import('../src/registries/http.js');
+
+    // 1. Mock server 429 -> Retry-After -> 200 Success
+    let reqCount = 0;
+    let recordedUA = '';
+    const retryServer = http.createServer((req, res) => {
+      reqCount++;
+      recordedUA = req.headers['user-agent'] || '';
+      if (reqCount === 1) {
+        res.writeHead(429, { 'Retry-After': '0', 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'rate limited' }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      }
+    });
+
+    await new Promise((resolve) => {
+      retryServer.listen(0, '127.0.0.1', async () => {
+        const port = retryServer.address().port;
+        const testUrl = `http://127.0.0.1:${port}/retry-test`;
+        try {
+          const res = await fetchWithRetry(testUrl, {}, { maxRetries: 2, initialDelayMs: 20 });
+          assert.equal(res.status, 200, 'Request should succeed after 429 retry');
+          assert.equal(reqCount, 2, 'Server should have received 2 requests total (1 initial + 1 retry)');
+          assert.ok(recordedUA.startsWith('slop-deps/'), 'User-Agent must start with slop-deps/');
+        } finally {
+          retryServer.close(resolve);
+        }
+      });
+    });
+
+    // 2. Mock server timeout handling
+    const timeoutServer = http.createServer((req, res) => {
+      // Hold connection open without response
+    });
+
+    await new Promise((resolve) => {
+      timeoutServer.listen(0, '127.0.0.1', async () => {
+        const port = timeoutServer.address().port;
+        const testUrl = `http://127.0.0.1:${port}/timeout-test`;
+        let timedOut = false;
+        try {
+          await fetchWithRetry(testUrl, {}, { maxRetries: 0, timeoutMs: 50, initialDelayMs: 10 });
+        } catch (err) {
+          timedOut = true;
+          assert.ok(err.name === 'AbortError' || err.name === 'TimeoutError', 'Should abort on timeout');
+        } finally {
+          assert.equal(timedOut, true, 'Request should have timed out');
+          timeoutServer.close(resolve);
+        }
+      });
+    });
+  }
+  console.log('  ✔ PASS: HTTP client retry on 429, Retry-After header, stable User-Agent, and timeouts verified\n');
+
+  console.log('🎉 All 90 test assertions passed successfully!');
 }
 
 run().catch((err) => {

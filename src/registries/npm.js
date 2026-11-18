@@ -1,5 +1,6 @@
 import { findTyposquatCandidate, typosquatSuggestion } from '../typosquat.js';
 import { cacheGet, cacheSet } from './cache.js';
+import { fetchWithRetry } from './http.js';
 
 const CACHE = new Map();
 const IN_FLIGHT = new Map();
@@ -36,12 +37,8 @@ export async function checkNpmPackage(pkgName) {
 
     const url = `https://registry.npmjs.org/${encodedName}`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-
     try {
-      const res = await fetch(url, {
-        signal: controller.signal,
+      const res = await fetchWithRetry(url, {
         headers: {
           'Accept': 'application/vnd.npm.install-v1+json, application/json;q=0.9'
         }
@@ -155,8 +152,6 @@ export async function checkNpmPackage(pkgName) {
         exists: null,
         message: `Failed to query npm: ${err.message}`
       };
-    } finally {
-      clearTimeout(timeout);
     }
   })();
 

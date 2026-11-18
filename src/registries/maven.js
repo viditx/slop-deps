@@ -1,5 +1,6 @@
 import { findTyposquatCandidate, typosquatSuggestion } from '../typosquat.js';
 import { cacheGet, cacheSet } from './cache.js';
+import { fetchWithRetry } from './http.js';
 
 const REPOS = {
   central: 'https://repo1.maven.org/maven2/',
@@ -85,13 +86,10 @@ export async function checkMavenPackage(pkgCoord) {
 
     for (const repoUrl of repoList) {
       const fullUrl = `${repoUrl}${pathSuffix}`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
 
       try {
-        const res = await fetch(fullUrl, {
-          headers: { 'User-Agent': UA },
-          signal: controller.signal
+        const res = await fetchWithRetry(fullUrl, {
+          headers: { 'User-Agent': UA }
         });
         if (res.status === 404) {
           continue;
@@ -103,8 +101,6 @@ export async function checkMavenPackage(pkgCoord) {
         }
       } catch (err) {
         networkErrors.push(err.message);
-      } finally {
-        clearTimeout(timer);
       }
     }
 
