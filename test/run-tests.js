@@ -1759,7 +1759,51 @@ fun main() {}
   }
   console.log('  ✔ PASS: zero runtime dependencies invariant verified in package.json and CLI execution\n');
 
-  console.log('🎉 All 94 test assertions passed successfully!');
+  // Test 95: Adversarial test expansion and extractor fuzzing (P1-6)
+  console.log('Test 95: Adversarial fuzzing across all extractors (P1-6)');
+  {
+    const { extractJsImports } = await import('../src/extractors/js-ts.js');
+    const { extractPythonImports } = await import('../src/extractors/python.js');
+    const { extractRustUses } = await import('../src/extractors/rust.js');
+    const { extractGradleDependencies } = await import('../src/extractors/kotlin.js');
+    const { extractPackageJson, extractPyProjectToml, extractCargoToml } = await import('../src/extractors/manifests.js');
+
+    const adversarialSeeds = [
+      '',
+      '\0\0\0\0',
+      'a'.repeat(30000),
+      'import '.repeat(500),
+      'require('.repeat(500) + ')'.repeat(500),
+      '/*'.repeat(300),
+      '//'.repeat(300),
+      '"'.repeat(501),
+      '`${'.repeat(300),
+      "import('".repeat(200),
+      'from ... import '.repeat(200),
+      '#[path = '.repeat(200),
+      'dependencies = ['.repeat(200),
+      '<script>'.repeat(300),
+      '{'.repeat(500) + '}'.repeat(500),
+      "import '\uFEFF\u0000\uD800'",
+      '\r\n\r\n\r\n',
+      '/'.repeat(500) + 'g',
+      'use ::{};',
+      'implementation(platform("..."))'
+    ];
+
+    for (const seed of adversarialSeeds) {
+      assert.ok(Array.isArray(extractJsImports(seed, 'fuzz.js')), 'JS/TS extractor must return array');
+      assert.ok(Array.isArray(extractPythonImports(seed, 'fuzz.py')), 'Python extractor must return array');
+      assert.ok(Array.isArray(extractRustUses(seed, 'fuzz.rs')), 'Rust extractor must return array');
+      assert.ok(Array.isArray(extractGradleDependencies(seed, 'fuzz.gradle')), 'Gradle extractor must return array');
+      assert.ok(Array.isArray(extractPackageJson(seed, 'fuzz.json')), 'package.json extractor must return array');
+      assert.ok(Array.isArray(extractPyProjectToml(seed, 'fuzz.toml')), 'pyproject.toml extractor must return array');
+      assert.ok(Array.isArray(extractCargoToml(seed, 'fuzz.toml')), 'Cargo.toml extractor must return array');
+    }
+  }
+  console.log('  ✔ PASS: adversarial inputs fuzzed with bounded runtime and zero crashes\n');
+
+  console.log('🎉 All 95 test assertions passed successfully!');
 }
 
 run().catch((err) => {
