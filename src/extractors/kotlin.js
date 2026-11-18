@@ -136,7 +136,8 @@ export function extractGradleDependencies(source, filePath = 'build.gradle.kts')
 
 export function extractLibsVersionsToml(source, filePath = 'gradle/libs.versions.toml') {
   const packages = new Map();
-  const lines = source.split('\n');
+  const cleanSource = (source || '').replace(/^\uFEFF/, '');
+  const lines = cleanSource.replace(/\r\n/g, '\n').split('\n');
   let currentSection = '';
 
   for (let i = 0; i < lines.length; i++) {

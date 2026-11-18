@@ -247,7 +247,8 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
 
   const safeReadFile = async (filePath) => {
     try {
-      return await fs.readFile(filePath, 'utf-8');
+      const data = await fs.readFile(filePath, 'utf-8');
+      return data.charCodeAt(0) === 0xFEFF ? data.slice(1) : data;
     } catch (err) {
       traversalErrors.push({
         file: path.relative(targetDir, filePath),

@@ -1691,7 +1691,57 @@ fun main() {}
   }
   console.log('  ✔ PASS: corpus SHA-256 integrity verified and tampered corpus rejected with clear error\n');
 
-  console.log('🎉 All 92 test assertions passed successfully!');
+  // Test 93: Manifest parser robustness against malformed input, BOM, CRLF, and duplicates (P1-4)
+  console.log('Test 93: Manifest parser robustness (P1-4)');
+  {
+    const os = await import('node:os');
+
+    // 1. Malformed package.json must emit UNKNOWN with line number and exit 2 under --strict
+    const tempMalformedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-malformed-pkg-'));
+    fs.writeFileSync(path.join(tempMalformedDir, 'package.json'), '{\n  "name": "broken",\n  "dependencies": {\n    "bad": \n');
+    const malformedScan = await scanDirectory(tempMalformedDir, { allowConfig: false, offline: true });
+    const malformedFinding = malformedScan.findings.find(f => f.status === 'UNKNOWN' && f.file.includes('package.json'));
+    assert.ok(malformedFinding, 'Malformed package.json must emit an UNKNOWN finding');
+    assert.ok(malformedFinding.message.includes('Malformed JSON'), 'Message must indicate malformed JSON');
+    assert.equal(malformedFinding.line, 4, 'Must report exact line where syntax error occurred');
+    const strictPkgRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--strict', tempMalformedDir], { encoding: 'utf-8' });
+    assert.equal(strictPkgRun.status, 2, 'Malformed package.json under --strict must exit 2');
+    fs.rmSync(tempMalformedDir, { recursive: true, force: true });
+
+    // 2. Malformed pyproject.toml (unclosed array) must emit UNKNOWN and exit 2 under --strict
+    const tempTomlDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-malformed-toml-'));
+    fs.writeFileSync(path.join(tempTomlDir, 'pyproject.toml'), '[project]\nname = "demo"\ndependencies = [\n  "requests>=2.0"\n');
+    const tomlScan = await scanDirectory(tempTomlDir, { allowConfig: false, offline: true });
+    const tomlFinding = tomlScan.findings.find(f => f.status === 'UNKNOWN' && f.file.includes('pyproject.toml'));
+    assert.ok(tomlFinding, 'Unclosed dependency array in pyproject.toml must emit an UNKNOWN finding');
+    assert.ok(tomlFinding.message.includes('Unclosed dependency array'), 'Message must indicate unclosed dependency array');
+    const strictTomlRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--strict', tempTomlDir], { encoding: 'utf-8' });
+    assert.equal(strictTomlRun.status, 2, 'Malformed pyproject.toml under --strict must exit 2');
+    fs.rmSync(tempTomlDir, { recursive: true, force: true });
+
+    // 3. Duplicate key in Cargo.toml section must emit UNKNOWN and exit 2 under --strict
+    const tempCargoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-dup-cargo-'));
+    fs.writeFileSync(path.join(tempCargoDir, 'Cargo.toml'), '[dependencies]\nserde = "1.0"\nserde = "2.0"\n');
+    const cargoScan = await scanDirectory(tempCargoDir, { allowConfig: false, offline: true });
+    const cargoFinding = cargoScan.findings.find(f => f.status === 'UNKNOWN' && f.file.includes('Cargo.toml'));
+    assert.ok(cargoFinding, 'Duplicate key in Cargo.toml must emit an UNKNOWN finding');
+    assert.ok(cargoFinding.message.includes('Duplicate key'), 'Message must indicate duplicate key');
+    const strictCargoRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--strict', tempCargoDir], { encoding: 'utf-8' });
+    assert.equal(strictCargoRun.status, 2, 'Duplicate key in Cargo.toml under --strict must exit 2');
+    fs.rmSync(tempCargoDir, { recursive: true, force: true });
+
+    // 4. Manifest with UTF-8 BOM (\uFEFF) and CRLF (\r\n) must parse cleanly
+    const tempBomDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-bom-'));
+    fs.writeFileSync(path.join(tempBomDir, 'package.json'), '\uFEFF{\r\n  "name": "bom-test",\r\n  "dependencies": {\r\n    "react": "^18.0.0"\r\n  }\r\n}');
+    const bomScan = await scanDirectory(tempBomDir, { allowConfig: false, offline: true });
+    const reactFinding = bomScan.findings.find(f => f.name === 'react');
+    assert.ok(reactFinding, 'package.json with UTF-8 BOM and CRLF must extract react cleanly');
+    assert.equal(reactFinding.status, 'VERIFIED');
+    fs.rmSync(tempBomDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: malformed manifests emit graceful errors with file:line, exit 2 under --strict, and BOM/CRLF parsed cleanly\n');
+
+  console.log('🎉 All 93 test assertions passed successfully!');
 }
 
 run().catch((err) => {
