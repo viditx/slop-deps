@@ -1620,7 +1620,36 @@ fun main() {}
   }
   console.log('  ✔ PASS: HTTP client retry on 429, Retry-After header, stable User-Agent, and timeouts verified\n');
 
-  console.log('🎉 All 90 test assertions passed successfully!');
+  // Test 91: Deterministic output sorted by (file, line, package) (P1-2)
+  console.log('Test 91: Deterministic output (P1-2)');
+  {
+    const testDir = path.resolve('test');
+    const run1 = await scanDirectory(testDir, { allowConfig: false, offline: true });
+    const run2 = await scanDirectory(testDir, { allowConfig: false, offline: true });
+
+    const json1 = JSON.stringify(run1);
+    const json2 = JSON.stringify(run2);
+    assert.equal(json1, json2, 'Repeated scans must yield byte-identical JSON output');
+
+    // Verify sort order across findings
+    for (let i = 0; i < run1.findings.length - 1; i++) {
+      const a = run1.findings[i];
+      const b = run1.findings[i + 1];
+      const fileCmp = (a.file || '').localeCompare(b.file || '');
+      assert.ok(fileCmp <= 0, `File order violated: ${a.file} should precede or equal ${b.file}`);
+      if (fileCmp === 0) {
+        const lineDiff = (a.line || 0) - (b.line || 0);
+        assert.ok(lineDiff <= 0, `Line order violated within ${a.file}: line ${a.line} vs ${b.line}`);
+        if (lineDiff === 0) {
+          const nameCmp = (a.name || '').localeCompare(b.name || '');
+          assert.ok(nameCmp <= 0, `Name order violated within ${a.file}:${a.line}: ${a.name} vs ${b.name}`);
+        }
+      }
+    }
+  }
+  console.log('  ✔ PASS: findings deterministically sorted by (file, line, package) and byte-identical across runs\n');
+
+  console.log('🎉 All 91 test assertions passed successfully!');
 }
 
 run().catch((err) => {

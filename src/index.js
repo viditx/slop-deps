@@ -581,17 +581,27 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
 
   const sanitizedFindings = redactSecrets(findings);
 
+  const sortedFindings = [...sanitizedFindings].sort((a, b) => {
+    const fileCmp = (a.file || '').localeCompare(b.file || '');
+    if (fileCmp !== 0) return fileCmp;
+    const lineDiff = (a.line || 0) - (b.line || 0);
+    if (lineDiff !== 0) return lineDiff;
+    const nameCmp = (a.name || '').localeCompare(b.name || '');
+    if (nameCmp !== 0) return nameCmp;
+    return (a.ecosystem || '').localeCompare(b.ecosystem || '');
+  });
+
   return {
-    findings: sanitizedFindings,
+    findings: sortedFindings,
     stats: {
-      total: sanitizedFindings.length,
-      critical: sanitizedFindings.filter(f => f.risk === 'CRITICAL').length,
-      suspicious: sanitizedFindings.filter(f => f.risk === 'HIGH').length,
-      warn: sanitizedFindings.filter(f => f.risk === 'WARN').length,
-      clean: sanitizedFindings.filter(f => f.risk === 'CLEAN').length,
-      unknown: sanitizedFindings.filter(f => f.exists === null || f.status === 'UNKNOWN' || f.status === 'NETWORK_ERROR').length,
-      exists: sanitizedFindings.filter(f => f.exists === true).length,
-      notExists: sanitizedFindings.filter(f => f.exists === false).length
+      total: sortedFindings.length,
+      critical: sortedFindings.filter(f => f.risk === 'CRITICAL').length,
+      suspicious: sortedFindings.filter(f => f.risk === 'HIGH').length,
+      warn: sortedFindings.filter(f => f.risk === 'WARN').length,
+      clean: sortedFindings.filter(f => f.risk === 'CLEAN').length,
+      unknown: sortedFindings.filter(f => f.exists === null || f.status === 'UNKNOWN' || f.status === 'NETWORK_ERROR').length,
+      exists: sortedFindings.filter(f => f.exists === true).length,
+      notExists: sortedFindings.filter(f => f.exists === false).length
     }
   };
 }
