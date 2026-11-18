@@ -18,6 +18,19 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Verify zero runtime dependencies invariant
+        run: |
+          node -e '
+            const pkg = JSON.parse(require("fs").readFileSync("package.json", "utf-8"));
+            const deps = Object.keys(pkg.dependencies || {});
+            const optDeps = Object.keys(pkg.optionalDependencies || {});
+            if (deps.length > 0 || optDeps.length > 0) {
+              console.error("VIOLATION: package.json must have 0 runtime dependencies! Found:", deps, optDeps);
+              process.exit(1);
+            }
+            console.log("✔ Zero-dependency invariant verified: dependencies & optionalDependencies are empty");
+          '
+
       - name: Install site dependencies for integration tests
         run: npm ci --prefix site/morpho
 

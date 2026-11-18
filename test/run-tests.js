@@ -1741,7 +1741,25 @@ fun main() {}
   }
   console.log('  ✔ PASS: malformed manifests emit graceful errors with file:line, exit 2 under --strict, and BOM/CRLF parsed cleanly\n');
 
-  console.log('🎉 All 93 test assertions passed successfully!');
+  // Test 94: Zero runtime dependencies invariant (P1-5)
+  console.log('Test 94: Zero runtime dependencies invariant (P1-5)');
+  {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf-8'));
+    const deps = Object.keys(pkg.dependencies || {});
+    const optDeps = Object.keys(pkg.optionalDependencies || {});
+    assert.equal(deps.length, 0, `package.json.dependencies must be empty, found: ${deps.join(', ')}`);
+    assert.equal(optDeps.length, 0, `package.json.optionalDependencies must be empty, found: ${optDeps.join(', ')}`);
+
+    // Verify slop-deps executes cleanly with zero node_modules dependencies
+    const cliRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--dir', 'src'], {
+      encoding: 'utf-8',
+      env: { ...process.env, NODE_PATH: '' }
+    });
+    assert.equal(cliRun.status, 0, 'CLI must run and exit 0 without any runtime dependencies');
+  }
+  console.log('  ✔ PASS: zero runtime dependencies invariant verified in package.json and CLI execution\n');
+
+  console.log('🎉 All 94 test assertions passed successfully!');
 }
 
 run().catch((err) => {
