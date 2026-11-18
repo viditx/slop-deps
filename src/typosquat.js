@@ -196,13 +196,18 @@ export function addPopularEntries(ecosystem, names) {
   }
 }
 
-// Merge auto-generated corpus (src/corpus.generated.js) if present
+// Merge auto-generated corpus (src/corpus.generated.js) if present and intact
 try {
+  const { verifyCorpusIntegrity } = await import('./corpus-integrity.js');
+  await verifyCorpusIntegrity();
   // eslint-disable-next-line no-undef
   const generated = await import('./corpus.generated.js');
   addPopularEntries('npm', generated.NPM_GENERATED || []);
   addPopularEntries('pypi', generated.PYPI_GENERATED || []);
-} catch {
+} catch (err) {
+  if (err.code === 'ECORPUS_TAMPERED') {
+    throw err;
+  }
   // generated corpus not built yet — curated corpus still active
 }
 

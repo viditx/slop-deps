@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-11-18T00:00:00.000Z",
+  "files": {
+    "src/corpus.generated.js": {
+      "sha256": "ab42ca87166f64a89ba77de49faba5b7ca52abdadda1f6d61f5f80b4a61a3d62",
+      "bytes": 77272
+    }
+  }
+}

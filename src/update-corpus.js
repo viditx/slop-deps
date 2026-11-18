@@ -5,10 +5,15 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = path.resolve(__dirname, '..');
 const OUT_FILE = path.join(__dirname, 'corpus.generated.js');
+const MANIFEST_DIR = path.join(ROOT_DIR, 'corpus');
+const MANIFEST_FILE = path.join(MANIFEST_DIR, 'manifest.json');
+const VERSION_FILE = path.join(MANIFEST_DIR, 'version');
 
 // Popularity-ranked keyword sweeps — the npm search API needs non-empty text,
 // so we union results across high-signal ecosystem keywords.
@@ -115,5 +120,23 @@ export const PYPI_GENERATED = ${JSON.stringify(pypiNames, null, 0)};
 `;
 
   await fs.writeFile(OUT_FILE, body, 'utf-8');
-  return { npm: npmNames.length, pypi: pypiNames.length, file: OUT_FILE };
+
+  // Compute SHA-256 manifest and update corpus/manifest.json and corpus/version
+  const sha256 = createHash('sha256').update(body, 'utf-8').digest('hex');
+  const manifest = {
+    version: '1.0.0',
+    generatedAt: new Date().toISOString(),
+    files: {
+      'src/corpus.generated.js': {
+        sha256,
+        bytes: Buffer.byteLength(body, 'utf-8')
+      }
+    }
+  };
+
+  await fs.mkdir(MANIFEST_DIR, { recursive: true });
+  await fs.writeFile(MANIFEST_FILE, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
+  await fs.writeFile(VERSION_FILE, '1.0.0\n', 'utf-8');
+
+  return { npm: npmNames.length, pypi: pypiNames.length, file: OUT_FILE, sha256 };
 }

@@ -92,6 +92,20 @@ slopdeps --strict
 | `--fix` | AI-assisted import repair with atomic `.bak` backups and safety guards. |
 | `--strict` | Fail-closed gate: exit code 2 on warnings, critical findings, or errors. |
 | `--json / --sarif` | Machine-readable outputs for GitHub Code Scanning and CI pipelines. |
+| `--update-corpus` | Refresh popularity dataset from live registries & recalculate SHA-256 manifest. |
+
+---
+
+## Popularity Corpus Integrity & Refresh
+
+`slop-deps` bundles an offline popularity corpus verified against a cryptographically secured SHA-256 manifest (`corpus/manifest.json`):
+- **Startup Integrity:** On startup, `slop-deps` verifies the bundled corpus file (`src/corpus.generated.js`) against the SHA-256 digest in `corpus/manifest.json`. Any modified or tampered corpus dataset is rejected immediately with an `ECORPUS_TAMPERED` error.
+- **Corpus Version:** Tracked in `corpus/version`.
+- **Refreshing the Corpus:** Run:
+  ```bash
+  slopdeps --update-corpus
+  ```
+  This queries registry endpoints for top packages, updates `src/corpus.generated.js`, and regenerates `corpus/manifest.json` with the updated SHA-256 checksum.
 
 ---
 

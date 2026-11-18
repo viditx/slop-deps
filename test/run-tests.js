@@ -1649,7 +1649,49 @@ fun main() {}
   }
   console.log('  ✔ PASS: findings deterministically sorted by (file, line, package) and byte-identical across runs\n');
 
-  console.log('🎉 All 91 test assertions passed successfully!');
+  // Test 92: Corpus integrity and SHA-256 verification (P1-3)
+  console.log('Test 92: Corpus integrity verification (P1-3)');
+  {
+    const { verifyCorpusIntegrity } = await import('../src/corpus-integrity.js');
+    const os = await import('node:os');
+
+    // 1. Legitimate corpus manifest must pass cleanly
+    const check = await verifyCorpusIntegrity();
+    assert.equal(check.verified, true, 'Legitimate corpus manifest must verify cleanly');
+    assert.equal(check.version, '1.0.0', 'Corpus version must match 1.0.0');
+
+    // 2. Tampered corpus must throw ECORPUS_TAMPERED
+    const tempCorpusDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-corpus-tamper-'));
+    const fakeCorpusPath = path.join(tempCorpusDir, 'corpus.generated.js');
+    fs.writeFileSync(fakeCorpusPath, 'export const NPM_GENERATED = ["poisoned-package"];\n');
+
+    const fakeManifestPath = path.join(tempCorpusDir, 'manifest.json');
+    const fakeManifest = {
+      version: '1.0.0',
+      files: {
+        'corpus.generated.js': {
+          sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+          bytes: 123
+        }
+      }
+    };
+    fs.writeFileSync(fakeManifestPath, JSON.stringify(fakeManifest, null, 2));
+
+    let threwTamper = false;
+    try {
+      await verifyCorpusIntegrity(fakeManifestPath);
+    } catch (err) {
+      threwTamper = true;
+      assert.equal(err.code, 'ECORPUS_TAMPERED', 'Must throw with ECORPUS_TAMPERED error code');
+      assert.ok(err.message.includes('SHA-256 mismatch'), 'Error message must specify SHA-256 mismatch');
+    }
+    assert.equal(threwTamper, true, 'Tampered corpus must throw error and never silently pass');
+
+    fs.rmSync(tempCorpusDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: corpus SHA-256 integrity verified and tampered corpus rejected with clear error\n');
+
+  console.log('🎉 All 92 test assertions passed successfully!');
 }
 
 run().catch((err) => {
