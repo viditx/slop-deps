@@ -257,6 +257,29 @@ function splitPythonStatements(line) {
           }
         }
       }
+
+      // dynamic imports with non-literals: importlib.import_module(var) or __import__(var)
+      const PY_DYNAMIC_CALL = /\b(?:importlib\.import_module|__import__)\s*\(\s*([^,\)]+)/g;
+      let dynCallMatch;
+      while ((dynCallMatch = PY_DYNAMIC_CALL.exec(stmt)) !== null) {
+        const rawArg = dynCallMatch[1].trim();
+        if (!rawArg.startsWith("'") && !rawArg.startsWith('"')) {
+          const key = `unknown:${lineNum}:${rawArg}`;
+          if (!packages.has(key)) {
+            packages.set(key, {
+              name: rawArg,
+              ecosystem: 'pypi',
+              file: filePath,
+              line: lineNum,
+              raw: dynCallMatch[0].trim() + ')',
+              status: 'UNKNOWN',
+              risk: 'WARN',
+              exists: null,
+              message: `Statically unresolvable Python dynamic import: '${rawArg}'`
+            });
+          }
+        }
+      }
     }
   }
 

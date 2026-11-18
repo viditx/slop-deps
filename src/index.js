@@ -220,6 +220,7 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
 
   const dirNames = new Set();
   const traversalErrors = [];
+  const scanWarnings = [];
   const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir, traversalErrors);
   const pathAliases = await loadPathAliases(targetDir);
 
@@ -429,6 +430,10 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   // Filter builtins/local modules and group by package key (ecosystem:name)
   const uniqueTargets = new Map();
   for (const ref of packageReferences) {
+    if (ref.status === 'UNKNOWN') {
+      scanWarnings.push(ref);
+      continue;
+    }
     if (isBuiltin(ref.name, ref.ecosystem)) continue;
 
     // Python local tree check
@@ -487,15 +492,17 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   }
 
   const targets = Array.from(uniqueTargets.values());
-  const scanWarnings = traversalErrors.map((error) => ({
-    name: error.path,
-    ecosystem: 'scanner',
-    file: path.relative(targetDir, error.path).replace(/\\/g, '/'),
-    status: 'SCAN_ERROR',
-    risk: 'WARN',
-    exists: null,
-    message: `Could not inspect path: ${error.message}`
-  }));
+  for (const error of traversalErrors) {
+    scanWarnings.push({
+      name: error.path,
+      ecosystem: 'scanner',
+      file: path.relative(targetDir, error.path).replace(/\\/g, '/'),
+      status: 'SCAN_ERROR',
+      risk: 'WARN',
+      exists: null,
+      message: `Could not inspect path: ${error.message}`
+    });
+  }
 
   // Offline / privacy mode: bundled corpus answers popular packages with zero
   // network, the persistent cache replays past verdicts, everything else is an

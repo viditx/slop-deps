@@ -1367,7 +1367,43 @@ fun main() {}
   }
   console.log('  ✔ PASS: tri-state probe results (exists/not-exists/unknown) and exit-code contract verified\n');
 
-  console.log('🎉 All 86 test assertions passed successfully!');
+  // Test 87: Lexer blindspot hardening (P0-2)
+  console.log('Test 87: Lexer blindspot hardening (P0-2)');
+  {
+    const os = await import('node:os');
+    const cases = [
+      { name: 'require non-literal', ext: 'app.js', code: 'const m = "foo"; require(m);\n' },
+      { name: 'dynamic import expression', ext: 'app.js', code: 'import(getDynamicModule());\n' },
+      { name: 'dynamic string concat', ext: 'app.js', code: 'import("pkg-" + varName);\n' },
+      { name: 'template literal interpolation', ext: 'app.js', code: 'import(`prefix-${val}`);\n' },
+      { name: 'dynamic export * from', ext: 'app.js', code: 'export * from dynamicTarget;\n' },
+      { name: 'Python non-literal __import__', ext: 'script.py', code: 'pkg = "foo"\n__import__(pkg)\n' },
+      { name: 'Python non-literal importlib', ext: 'script.py', code: 'import importlib\nimportlib.import_module(dyn_mod)\n' },
+      { name: 'Rust #[path = ...]', ext: 'lib.rs', code: '#[path = "custom.rs"]\nmod custom_mod;\n' },
+      { name: 'Rust macro-generated use', ext: 'lib.rs', code: 'use dynamic_macro!();\n' }
+    ];
+
+    for (const c of cases) {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-lexer-'));
+      fs.writeFileSync(path.join(tempDir, c.ext), c.code);
+
+      // Verify that scanDirectory surfaces an UNKNOWN finding
+      const result = await scanDirectory(tempDir, { allowConfig: false });
+      const unknownFinding = result.findings.find(f => f.status === 'UNKNOWN');
+      assert.ok(unknownFinding, `Case '${c.name}' must emit an UNKNOWN finding`);
+      assert.equal(unknownFinding.risk, 'WARN');
+      assert.equal(unknownFinding.exists, null);
+
+      // Verify CLI --strict exits 2 on each case
+      const cliRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--strict', tempDir], { encoding: 'utf-8' });
+      assert.equal(cliRun.status, 2, `Case '${c.name}' under --strict must exit with code 2`);
+
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+  console.log('  ✔ PASS: all lexer blindspot cases emit UNKNOWN and exit 2 under --strict\n');
+
+  console.log('🎉 All 87 test assertions passed successfully!');
 }
 
 run().catch((err) => {

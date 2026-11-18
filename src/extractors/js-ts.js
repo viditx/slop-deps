@@ -61,7 +61,28 @@ const PH_END = '\uE001';
 
 function isRegexStart(code, i) {
   let j = i - 1;
-  while (j >= 0 && /\s/.test(code[j])) j--;
+  while (j >= 0) {
+    if (/\s/.test(code[j])) {
+      j--;
+      continue;
+    }
+    // Skip block comments /* ... */
+    if (j >= 1 && code[j] === '/' && code[j - 1] === '*') {
+      const start = code.lastIndexOf('/*', j - 2);
+      if (start !== -1) {
+        j = start - 1;
+        continue;
+      }
+    }
+    // Skip line comments // ...
+    const lineStart = code.lastIndexOf('\n', j);
+    const commentIdx = code.indexOf('//', lineStart + 1);
+    if (commentIdx !== -1 && commentIdx <= j) {
+      j = lineStart;
+      continue;
+    }
+    break;
+  }
   if (j < 0) return true;
   const prev = code[j];
   if (/[=,;:(\[{!&|?+\-*%^~<>]/.test(prev)) return true;
@@ -141,8 +162,9 @@ function maskStrings(code) {
       continue;
     }
 
-    // Handle regex literals so quotes inside regex character classes (e.g. /['"]/) never trigger string mode
-    // and braces inside regexes (e.g. /[{]/ or /\{/) never corrupt block brace counter
+    // Handle regex literals so quotes inside regex character classes (e.g. /['"]/) never trigger string mode,
+    // braces inside regexes (e.g. /[{]/ or /\{/) never corrupt block brace counter, and patterns inside regexes
+    // never match dynamic import/require lexers
     if (ch === '/' && isRegexStart(code, i)) {
       out += ch;
       i++;
@@ -150,8 +172,7 @@ function maskStrings(code) {
       while (i < code.length) {
         const rCh = code[i];
         if (rCh === '\\') {
-          const esc = code.slice(i, i + 2);
-          out += esc.replace(/[{}]/g, '_');
+          out += '  ';
           i += 2;
           continue;
         }
@@ -167,7 +188,7 @@ function maskStrings(code) {
           }
           break;
         }
-        out += (rCh === '{' || rCh === '}') ? '_' : rCh;
+        out += (rCh === '\n' ? '\n' : ' ');
         i++;
       }
       continue;
@@ -417,8 +438,22 @@ export function extractJsImports(sourceCode, filePath = '') {
     const rawSpec = m.isConcat
       ? resolveConcat(m.spec, strings).trim()
       : unmask(m.spec, strings).trim();
-    // Skip template literals with dynamic interpolation
+    // Dynamic template literals with interpolation
     if (rawSpec.includes('${')) {
+      const key = `unknown:tpl:${m.index}`;
+      if (!packages.has(key)) {
+        packages.set(key, {
+          name: rawSpec,
+          ecosystem: 'npm',
+          file: filePath,
+          line: getLineNumber(newlineOffsets, m.index + 1),
+          raw: rawSpec,
+          status: 'UNKNOWN',
+          risk: 'WARN',
+          exists: null,
+          message: `Statically unresolvable template literal import '${rawSpec}'`
+        });
+      }
       continue;
     }
 
@@ -433,6 +468,94 @@ export function extractJsImports(sourceCode, filePath = '') {
         line: getLineNumber(newlineOffsets, m.index + 1),
         raw: rawSpec
       });
+    }
+  }
+
+  // Detect unresolvable non-literal dynamic imports / require
+  const callRegex = /(?:^|[^\w.$])(?:require(?:\.resolve)?|import(?:\.meta\.resolve)?)\s*\(/g;
+  let dMatch;
+  while ((dMatch = callRegex.exec(masked)) !== null) {
+    const snap = contexts.get(dMatch.index);
+    if (snap && isInsideJsxOrBlockFromSnapshot(snap, false)) continue;
+
+    const openParenIdx = masked.indexOf('(', dMatch.index);
+    let depth = 1;
+    let closeParenIdx = -1;
+    for (let i = openParenIdx + 1; i < masked.length; i++) {
+      if (masked[i] === '(') depth++;
+      else if (masked[i] === ')') {
+        depth--;
+        if (depth === 0) { closeParenIdx = i; break; }
+      }
+    }
+    if (closeParenIdx === -1) continue;
+
+    const rawArgInMasked = masked.slice(openParenIdx + 1, closeParenIdx).trim();
+    if (!rawArgInMasked) continue;
+
+    const rawArg = unmask(rawArgInMasked, strings).trim();
+    if (!rawArg) continue;
+
+    const isStringLiteral = (rawArg.startsWith("'") && rawArg.endsWith("'")) ||
+                            (rawArg.startsWith('"') && rawArg.endsWith('"'));
+    const isCleanBacktick = rawArg.startsWith('`') && rawArg.endsWith('`') && !rawArg.includes('${');
+
+    let isStaticConcat = false;
+    if (rawArg.includes('+')) {
+      const parts = rawArg.split('+');
+      if (parts.length > 1 && parts.every(part => {
+        const p = part.trim();
+        return (p.startsWith("'") && p.endsWith("'")) ||
+               (p.startsWith('"') && p.endsWith('"')) ||
+               (p.startsWith('`') && p.endsWith('`') && !p.includes('${'));
+      })) {
+        isStaticConcat = true;
+      }
+    }
+
+    if (!isStringLiteral && !isCleanBacktick && !isStaticConcat) {
+      const key = `unknown:call:${dMatch.index}`;
+      if (!packages.has(key)) {
+        const callName = dMatch[0].trim();
+        packages.set(key, {
+          name: rawArg,
+          ecosystem: 'npm',
+          file: filePath,
+          line: getLineNumber(newlineOffsets, dMatch.index + 1),
+          raw: `${callName}${rawArg})`,
+          status: 'UNKNOWN',
+          risk: 'WARN',
+          exists: null,
+          message: `Statically unresolvable dynamic import expression: '${rawArg}'`
+        });
+      }
+    }
+  }
+
+  // Detect dynamic export * from <expression>
+  const exportRegex = /(?:^|[;\s}])export\s+\*\s+(?:as\s+[a-zA-Z_$][\w$]*\s+)?from\s+([^'"`\s;\n][^;\n]*)/g;
+  let expMatch;
+  while ((expMatch = exportRegex.exec(masked)) !== null) {
+    const rawArg = unmask(expMatch[1].trim(), strings).trim();
+    if (!rawArg) continue;
+    const isStringLiteral = (rawArg.startsWith("'") && rawArg.endsWith("'")) ||
+                            (rawArg.startsWith('"') && rawArg.endsWith('"')) ||
+                            (rawArg.startsWith('`') && rawArg.endsWith('`'));
+    if (!isStringLiteral) {
+      const key = `unknown:export:${expMatch.index}`;
+      if (!packages.has(key)) {
+        packages.set(key, {
+          name: rawArg,
+          ecosystem: 'npm',
+          file: filePath,
+          line: getLineNumber(newlineOffsets, expMatch.index + 1),
+          raw: `export * from ${rawArg}`,
+          status: 'UNKNOWN',
+          risk: 'WARN',
+          exists: null,
+          message: `Statically unresolvable dynamic export expression: '${rawArg}'`
+        });
+      }
     }
   }
 
