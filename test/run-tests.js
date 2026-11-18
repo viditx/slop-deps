@@ -1803,7 +1803,85 @@ fun main() {}
   }
   console.log('  ✔ PASS: adversarial inputs fuzzed with bounded runtime and zero crashes\n');
 
-  console.log('🎉 All 95 test assertions passed successfully!');
+  // Test 96: Exit code contract codified (0, 1, 2) (P2-4)
+  console.log('Test 96: Codify exit code contract across clean, findings, and strict failure (P2-4)');
+  {
+    const os = await import('node:os');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exit-contract-'));
+
+    // 1. Code 0: Clean — all imports resolved as existing
+    const cleanDir = path.join(tempDir, 'clean');
+    fs.mkdirSync(cleanDir);
+    fs.writeFileSync(path.join(cleanDir, 'app.js'), "import express from 'express';\n");
+    const res0 = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--offline', cleanDir], {
+      encoding: 'utf-8'
+    });
+    assert.equal(res0.status, 0, 'Exit code 0 must be returned when all imports are clean and resolved');
+
+    // 2. Code 1: Findings — at least one hallucinated/missing package
+    const findingsDir = path.join(tempDir, 'findings');
+    fs.mkdirSync(findingsDir);
+    const { cachePath } = await import('../src/registries/cache.js');
+    const cacheFile = cachePath();
+    let originalCache = null;
+    if (fs.existsSync(cacheFile)) {
+      originalCache = fs.readFileSync(cacheFile, 'utf-8');
+    }
+    try {
+      const mockResult = {
+        name: 'fake-slop-nonexistent-contract-test',
+        ecosystem: 'npm',
+        status: 'HALLUCINATED',
+        risk: 'CRITICAL',
+        exists: false,
+        message: 'Package DOES NOT EXIST on npm. Potential AI hallucination trap!'
+      };
+      const mockCache = {
+        'npm:fake-slop-nonexistent-contract-test': { t: Date.now(), r: mockResult }
+      };
+      fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+      fs.writeFileSync(cacheFile, JSON.stringify(mockCache), 'utf-8');
+
+      fs.writeFileSync(path.join(findingsDir, 'app.js'), "import fake from 'fake-slop-nonexistent-contract-test';\n");
+      const res1 = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), findingsDir], {
+        encoding: 'utf-8'
+      });
+      assert.equal(res1.status, 1, 'Exit code 1 must be returned when findings (not-exists) are detected');
+    } finally {
+      if (originalCache !== null) {
+        fs.writeFileSync(cacheFile, originalCache, 'utf-8');
+      } else if (fs.existsSync(cacheFile)) {
+        fs.rmSync(cacheFile, { force: true });
+      }
+    }
+
+    // 3. Code 2: Strict failure — at least one unknown result, or tool error
+    // Case 2a: Strict mode with UNKNOWN finding
+    const unknownDir = path.join(tempDir, 'unknown');
+    fs.mkdirSync(unknownDir);
+    fs.writeFileSync(path.join(unknownDir, 'app.js'), "const mod = require(dynamicVar);\n");
+    const res2a = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--strict', unknownDir], {
+      encoding: 'utf-8'
+    });
+    assert.equal(res2a.status, 2, 'Exit code 2 must be returned under --strict when unknown findings are present');
+
+    // Case 2b: Tool error (non-existent directory)
+    const res2b = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--dir', 'non-existent-dir-contract-test-xyz'], {
+      encoding: 'utf-8'
+    });
+    assert.equal(res2b.status, 2, 'Exit code 2 must be returned on tool execution error');
+
+    // Case 2c: Tool error (invalid flag)
+    const res2c = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--invalid-flag-contract-test'], {
+      encoding: 'utf-8'
+    });
+    assert.equal(res2c.status, 2, 'Exit code 2 must be returned on invalid CLI usage');
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: exit code contract (0: clean, 1: findings, 2: strict failure / error) verified\n');
+
+  console.log('🎉 All 96 test assertions passed successfully!');
 }
 
 run().catch((err) => {

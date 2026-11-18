@@ -19,7 +19,7 @@ Windows standalone binary `slopdeps-installer.exe` is also available on [Release
 [![npm version](https://img.shields.io/npm/v/slop-deps?color=cb3837)](https://www.npmjs.com/package/slop-deps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
-[![Tests: 79 Passing](https://img.shields.io/badge/Tests-79%2F79%20PASS-brightgreen.svg)](test/run-tests.js)
+[![Tests: 96 Passing](https://img.shields.io/badge/Tests-96%2F96%20PASS-brightgreen.svg)](test/run-tests.js)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
 ```text
@@ -149,7 +149,7 @@ Windows release binaries (`slopdeps-installer.exe`) are currently self-distribut
 **Engineered with AI agents over weeks of relentless audit cycles.**
 
 - Enforced pure Node.js standard library with zero external runtime packages.
-- Built an automated 79-test deterministic regression suite (all green).
+- Built an automated 96-test deterministic regression suite (all green).
 - Ran 3 rounds of red-team security audits to hunt down parser blindspots and TOML escapes.
 - Native Inno Setup 6 installer with verified PE resource headers.
 
