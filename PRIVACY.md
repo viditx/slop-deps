@@ -27,18 +27,22 @@ The npm tarball contains code and one bundled data file: nothing else.
 ## What touches the network (and why)
 
 In a normal scan, each *unrecognized* package name is checked with a single
-**GET** request against the relevant public registry:
+**GET** request against the relevant public registry. All outbound endpoints,
+protocols, ports, payloads, and triggers are documented below:
 
-- `https://registry.npmjs.org/<name>` (npm)
-- `https://pypi.org/pypi/<name>/json` (PyPI)
-- `https://crates.io/api/v1/crates/<name>` (crates.io, when Rust files/manifests are present)
+| Host | Protocol / Port | Method | Payload / Request Data | Purpose | When Called |
+|:---|:---:|:---:|:---|:---|:---|
+| `registry.npmjs.org` | HTTPS / 443 | GET | Package name in URL path | Fetch npm package metadata & verify existence | Normal scan when unverified npm package detected |
+| `pypi.org` | HTTPS / 443 | GET | Package name in URL path | Fetch PyPI package JSON metadata & verify existence | Normal scan when unverified Python/pip package detected |
+| `crates.io` | HTTPS / 443 | GET | Crate name in URL path | Fetch crates.io API metadata (`User-Agent: slop-deps/<version>`) | Normal scan when unverified Rust/Cargo dependency detected |
+| `repo1.maven.org` | HTTPS / 443 | GET | Group & Artifact ID path (`maven-metadata.xml`) | Verify package existence on Maven Central | Normal scan when unverified Kotlin/Java/Gradle dependency detected |
+| `dl.google.com` | HTTPS / 443 | GET | Group & Artifact ID path (`maven-metadata.xml`) | Verify package existence on Google Maven | Normal scan when unverified Android dependency detected |
+| `plugins.gradle.org` | HTTPS / 443 | GET | Plugin/Artifact ID path (`maven-metadata.xml`) | Verify package existence on Gradle Plugin Portal | Normal scan when unverified Gradle plugin detected |
+| `raw.githubusercontent.com` | HTTPS / 443 | GET | None | Download top-30-days PyPI dataset | **Only** when running `--update-corpus` explicitly |
+| `registry.npmjs.org` (search) | HTTPS / 443 | GET | Query seeds in URL params | Query high-popularity packages for bundled corpus | **Only** when running `--update-corpus` explicitly |
+| `api.openai.com` / `api.anthropic.com` / local (e.g. `127.0.0.1:11434`) | HTTPS / 443 (or local HTTP) | POST | Flagged import line & diagnostic context | AI-assisted replacement suggestion | **Only** when `--fix` is explicitly invoked with user-supplied API key |
 
-No POSTs. No authorization headers or user authentication. Standard `Accept`
-headers are sent to npm/PyPI; crates.io requests include a descriptive `User-Agent`
-(`slop-deps/<version>`) as required by the crates.io API policy. No identifiers,
-tokens, or machine fingerprints are sent: just the package name in the URL path,
-the same request any package manager makes. Nothing else is contacted: no CDN, no
-analytics domain, no update server.
+No POSTs occur in standard scanning. No authorization headers, tokens, tracking cookies, machine fingerprints, or analytics are ever sent. Standard `Accept` and `User-Agent` headers are transmitted as required by public registry rate-limiting and identification policies. Nothing else is contacted: no telemetry service, no third-party CDNs, and no background phone-home daemons.
 
 If even that is too much for your environment, privacy mode makes no network
 calls at all:
