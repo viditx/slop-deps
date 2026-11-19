@@ -63,12 +63,17 @@ jobs:
         shell: bash
 
       - name: Create GitHub Release with Artifacts
-        uses: softprops/action-gh-release@c95fe1489396fe8a9ec87454c7703db340811774 # v2.2.1
-        with:
-          files: |
-            dist/slopdeps-installer.exe
-            dist/sbom.spdx.json
-            dist/SHA256SUMS.txt
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.ref_name }}"
+          if [ -z "$tag" ] || [ "$tag" = "main" ]; then
+            tag="${{ inputs.tag || 'v1.0.1' }}"
+          fi
+          gh release create "$tag" \
+            dist/slopdeps-installer.exe \
+            dist/sbom.spdx.json \
+            dist/SHA256SUMS.txt \
+            --title "$tag" \
+            --generate-notes
+        shell: bash
