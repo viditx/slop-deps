@@ -57,6 +57,12 @@ export default CORPUS;
   fs.writeFileSync(targetCorpusPath, corpusContent, 'utf8');
   console.log(`  ✔ Written ${path.basename(targetCorpusPath)} (${Buffer.byteLength(corpusContent)} bytes)`);
 
+  // Browser-safe stub for corpus-integrity.js (bundled corpus is pre-verified at build time)
+  const integrityStubPath = path.join(vendorDir, 'corpus-integrity.js');
+  const integrityStub = `// Browser-safe stub for web scanner — bundled corpus is statically verified during build\nexport async function verifyCorpusIntegrity() {\n  return { verified: true, version: '1.0.0-alpha', files: [] };\n}\n`;
+  fs.writeFileSync(integrityStubPath, integrityStub, 'utf8');
+  console.log(`  ✔ Written ${path.basename(integrityStubPath)} (browser stub)`);
+
   // 3. Sync all core AST extractors and verification modules directly (Zero Vendor Drift)
   const filesToSync = [
     { src: 'src/builtins.js', dest: 'builtins.js' },

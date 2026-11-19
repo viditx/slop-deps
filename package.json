@@ -1,7 +1,7 @@
 {
   "name": "slop-deps",
   "version": "1.0.0-alpha",
-  "description": "Fast, zero-dependency scanner for unverified package imports and AI-generated hallucinations across npm, PyPI, and Crates.io.",
+  "description": "Fast, zero-dependency scanner for unverified package imports and AI-generated hallucinations across npm, PyPI, Crates.io, and Maven/Gradle.",
   "main": "src/index.js",
   "type": "module",
   "bin": {
@@ -21,6 +21,11 @@
     "dependencies",
     "npm",
     "pypi",
+    "crates",
+    "rust",
+    "kotlin",
+    "gradle",
+    "maven",
     "scanner",
     "linter",
     "anti-slop"
@@ -29,8 +34,8 @@
   "license": "MIT",
   "files": [
     "bin/slop-deps.js",
-    "bin/slopdeps.exe",
     "src",
+    "corpus",
     "README.md",
     "PRIVACY.md",
     "LICENSE",

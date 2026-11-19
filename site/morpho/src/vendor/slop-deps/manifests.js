@@ -1,7 +1,10 @@
+import path from 'path';
+
 export function extractPackageJson(content, filePath = 'package.json') {
   const packages = [];
+  const cleanContent = (content || '').replace(/^\uFEFF/, '');
   try {
-    const pkg = JSON.parse(content);
+    const pkg = JSON.parse(cleanContent);
     const sections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
     for (const section of sections) {
       if (pkg[section] && typeof pkg[section] === 'object') {
@@ -85,15 +88,47 @@ export function extractPackageJson(content, filePath = 'package.json') {
         }
       }
     }
-  } catch {
-    // Malformed JSON, skip gracefully
+  } catch (err) {
+    let errLine = 1;
+    if (err.message.includes('Unexpected end of JSON input')) {
+      errLine = cleanContent.trimEnd().split('\n').length;
+    } else {
+      const posMatch = err.message.match(/at position (\d+)/i);
+      const lineMatch = err.message.match(/line (\d+)/i);
+      if (posMatch) {
+        const pos = parseInt(posMatch[1], 10);
+        errLine = cleanContent.slice(0, pos).split('\n').length;
+      } else if (lineMatch) {
+        errLine = parseInt(lineMatch[1], 10);
+      } else {
+        const snippetMatch = err.message.match(/\.\.\."([^"]+)"/);
+        if (snippetMatch) {
+          const rawSnippet = snippetMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+          const idx = cleanContent.indexOf(rawSnippet.slice(0, 10));
+          if (idx !== -1) {
+            errLine = cleanContent.slice(0, idx).split('\n').length;
+          }
+        }
+      }
+    }
+    return [{
+      name: path.basename(filePath),
+      ecosystem: 'npm',
+      file: filePath,
+      line: errLine,
+      status: 'UNKNOWN',
+      risk: 'WARN',
+      exists: null,
+      message: `Malformed JSON manifest in ${filePath}:${errLine}: ${err.message}`
+    }];
   }
   return packages;
 }
 
 export function extractRequirementsTxt(content, filePath = 'requirements.txt') {
   const packages = [];
-  const lines = content.split('\n');
+  const cleanContent = (content || '').replace(/^\uFEFF/, '');
+  const lines = cleanContent.replace(/\r\n/g, '\n').split('\n');
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
     // Strip inline comments
@@ -148,9 +183,12 @@ export function extractRequirementsTxt(content, filePath = 'requirements.txt') {
 
 export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
   const packages = [];
-  const lines = content.split('\n');
+  const cleanContent = (content || '').replace(/^\uFEFF/, '');
+  const lines = cleanContent.replace(/\r\n/g, '\n').split('\n');
   let currentSection = '';
   let inDependenciesArray = false;
+  let depStartLine = 1;
+  const seenKeys = new Map();
 
   function parseTomlArrayItems(text, lineNum) {
     const itemMatches = text.matchAll(/(?:"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)')/g);
@@ -189,6 +227,7 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
     if (sectionMatch) {
       currentSection = sectionMatch[1].trim().toLowerCase();
       inDependenciesArray = false;
+      if (!seenKeys.has(currentSection)) seenKeys.set(currentSection, new Set());
       continue;
     }
 
@@ -205,6 +244,7 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
       ((isBuildSystem || isFlitMetadata) && /^requires\s*=\s*\[/i.test(line))
     ) {
       inDependenciesArray = true;
+      depStartLine = i + 1;
       if (line.endsWith(']')) {
         const inner = line.slice(line.indexOf('[') + 1, line.lastIndexOf(']'));
         parseTomlArrayItems(inner, i + 1);
@@ -233,10 +273,26 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
 
       const match = line.match(/^([a-zA-Z0-9_\-\.]+)\s*=/);
       if (match) {
-        const name = match[1].toLowerCase();
-        if (name !== 'python') {
+        const key = match[1].toLowerCase();
+        const sectionKeySet = seenKeys.get(currentSection) || new Set();
+        if (sectionKeySet.has(key)) {
           packages.push({
-            name,
+            name: key,
+            ecosystem: 'pypi',
+            file: filePath,
+            line: i + 1,
+            status: 'UNKNOWN',
+            risk: 'WARN',
+            exists: null,
+            message: `Malformed TOML: Duplicate key '${key}' in [${currentSection}] at line ${i + 1}`
+          });
+        }
+        sectionKeySet.add(key);
+        seenKeys.set(currentSection, sectionKeySet);
+
+        if (key !== 'python') {
+          packages.push({
+            name: key,
             raw: line,
             ecosystem: 'pypi',
             file: filePath,
@@ -245,6 +301,19 @@ export function extractPyProjectToml(content, filePath = 'pyproject.toml') {
         }
       }
     }
+  }
+
+  if (inDependenciesArray) {
+    packages.push({
+      name: path.basename(filePath),
+      ecosystem: 'pypi',
+      file: filePath,
+      line: depStartLine,
+      status: 'UNKNOWN',
+      risk: 'WARN',
+      exists: null,
+      message: `Malformed TOML: Unclosed dependency array starting at line ${depStartLine} in ${filePath}`
+    });
   }
 
   return packages;
@@ -362,8 +431,11 @@ export function extractPipfile(content, filePath = 'Pipfile') {
 
 export function extractCargoToml(content, filePath = 'Cargo.toml') {
   const packages = [];
-  const lines = content.split('\n');
+  const cleanContent = (content || '').replace(/^\uFEFF/, '');
+  const lines = cleanContent.replace(/\r\n/g, '\n').split('\n');
   let inDeps = false;
+  let currentSection = '';
+  const seenKeys = new Map();
 
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
@@ -373,14 +445,15 @@ export function extractCargoToml(content, filePath = 'Cargo.toml') {
 
     const sectionMatch = line.match(/^\[+([^\]]+)\]+/);
     if (sectionMatch) {
-      const section = sectionMatch[1].trim();
+      currentSection = sectionMatch[1].trim();
       // [dependencies], [dev-dependencies], [build-dependencies], [workspace.dependencies],
       // [target.'cfg(...)'.dependencies], and inline sub-tables like [dependencies.serde_derive]
-      const depsMatch = section.match(/^(?:workspace\.)?(?:dev-|build-)?dependencies(?:\.([a-zA-Z0-9_-]+))?$/)
-        || section.match(/^target\.[^.]+(?:\.[^]]*)?\.(?:dev-|build-)?dependencies(?:\.([a-zA-Z0-9_-]+))?$/);
+      const depsMatch = currentSection.match(/^(?:workspace\.)?(?:dev-|build-)?dependencies(?:\.([a-zA-Z0-9_-]+))?$/)
+        || currentSection.match(/^target\.[^.]+(?:\.[^]]*)?\.(?:dev-|build-)?dependencies(?:\.([a-zA-Z0-9_-]+))?$/);
       inDeps = Boolean(depsMatch);
+      if (!seenKeys.has(currentSection)) seenKeys.set(currentSection, new Set());
       if (inDeps && depsMatch[1]) {
-        packages.push({ name: depsMatch[1].toLowerCase(), raw: section, ecosystem: 'cargo', file: filePath, line: i + 1 });
+        packages.push({ name: depsMatch[1].toLowerCase(), raw: currentSection, ecosystem: 'cargo', file: filePath, line: i + 1 });
       }
       continue;
     }
@@ -394,6 +467,22 @@ export function extractCargoToml(content, filePath = 'Cargo.toml') {
     const match = line.match(/^([a-zA-Z0-9_-]+)\s*=\s*/);
     if (match) {
       const name = match[1].toLowerCase();
+      const sectionKeySet = seenKeys.get(currentSection) || new Set();
+      if (sectionKeySet.has(name)) {
+        packages.push({
+          name,
+          ecosystem: 'cargo',
+          file: filePath,
+          line: i + 1,
+          status: 'UNKNOWN',
+          risk: 'WARN',
+          exists: null,
+          message: `Malformed TOML: Duplicate key '${name}' in [${currentSection}] at line ${i + 1}`
+        });
+      }
+      sectionKeySet.add(name);
+      seenKeys.set(currentSection, sectionKeySet);
+
       if (name && name !== 'workspace') {
         packages.push({ name, raw: line, ecosystem: 'cargo', file: filePath, line: i + 1 });
       }

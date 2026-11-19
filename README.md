@@ -1,7 +1,7 @@
 # slop-deps
 
 > **Architected by vidit. Engineered by AI(Antigravity)**  
-> Catch hallucinated, non-existent npm, PyPI, and Crates.io packages *before* you run `install` and get owned.
+> Catch hallucinated, non-existent npm, PyPI, Crates.io, and Maven/Gradle packages *before* you run `install` and get owned.
 
 **Web Scanner:** [slop-deps.pages.dev](https://slop-deps.pages.dev/) &middot; **npm:** [`npm install -g slop-deps`](https://www.npmjs.com/package/slop-deps)
 
@@ -49,15 +49,15 @@ The moment you run `npm install` or `pip install`:
 2. The payload runs in your shell, exfiltrating `.env` secrets or SSH keys.
 3. Traditional tools (`npm audit`, Snyk) only inspect dependencies *after* install scripts have already executed.
 
-`slop-deps` statically scans raw source files (`.js`, `.ts`, `.py`, `.rs`) and manifests to catch hallucinations *before* anything touches your disk or package manager.
+`slop-deps` statically scans raw source files (`.js`, `.ts`, `.py`, `.rs`, `.kt`, `.gradle`) and manifests to catch hallucinations *before* anything touches your disk or package manager.
 
 ---
 
 ## How It Works
 
-- **Static Lexer:** Zero-dependency lexical parser for JS/TS, Python, Rust, and manifests. Handles dynamic imports, static concatenation (`'a' + 'b'`), and type-only imports without compiler overhead.
+- **Static Lexer:** Zero-dependency lexical parser for JS/TS, Python, Rust, Kotlin/Gradle, and manifests. Handles dynamic imports, static concatenation (`'a' + 'b'`), and type-only imports without compiler overhead.
 - **Bundled Popularity Corpus:** 4,179 ecosystem packages verified offline in sub-millisecond time with zero telemetry.
-- **Upstream Registry Probes:** Direct HTTPS HEAD checks to `npmjs.org`, `pypi.org`, and `crates.io` with local TTL disk caching.
+- **Upstream Registry Probes:** Direct HTTPS checks to `npmjs.org`, `pypi.org`, `crates.io`, and Maven Central / Google Maven / Gradle Plugin Portal with local TTL disk caching.
 - **Offline Typosquat Engine:** Damerau-Levenshtein and homoglyph detection for lookalike attacks targeting popular dependencies (`reqeusts` -> `requests`).
 - **Private Scope Discovery:** Auto-detects internal enterprise packages from `.npmrc` and root `package.json` to prevent false alarms on internal monorepo code.
 
