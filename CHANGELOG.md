@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0-alpha] - 2026-11-18
+## [1.0.1] - 2026-11-19
+
+### Added
+- **Kotlin & Gradle Ecosystem Support**:
+  - Full AST dependency extraction for Kotlin script (`.kts`), Kotlin (`.kt`), and Groovy Gradle (`.gradle`) build files.
+  - Multi-registry upstream verification across Maven Central (`repo1.maven.org`), Google Maven repository (`dl.google.com`), and Gradle Plugin Portal (`plugins.gradle.org`).
+  - Bundled top-popular Maven artifacts in offline corpus with sub-millisecond detection.
+- **Browser-Safe Web Bundler Support**:
+  - Added build-time browser stubs for web scanners running in client-side Vite/React environments (`slop-deps.pages.dev`).
+
+## [1.0.0] - 2026-11-18
 
 ### Security & Correctness (P0)
 - **Fail-Closed Registry Probes (P0-1)**:
