@@ -98,6 +98,8 @@ export async function checkMavenPackage(pkgCoord) {
           metaText = await res.text();
           foundRepo = repoUrl;
           break;
+        } else {
+          networkErrors.push(`HTTP ${res.status} from ${repoUrl}`);
         }
       } catch (err) {
         networkErrors.push(err.message);
@@ -105,14 +107,14 @@ export async function checkMavenPackage(pkgCoord) {
     }
 
     if (!foundRepo || !metaText) {
-      if (networkErrors.length === repoList.length) {
+      if (networkErrors.length > 0) {
         return {
           name: pkgCoord,
           ecosystem: 'maven',
           status: 'NETWORK_ERROR',
           risk: 'WARN',
           exists: null,
-          message: `Failed to query Maven registries: ${networkErrors[0]}`
+          message: `Failed to query Maven registries: ${networkErrors.join(', ')}`
         };
       }
 

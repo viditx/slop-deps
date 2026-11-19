@@ -41,6 +41,10 @@ jobs:
           '
         shell: bash
 
+      - name: Install site dependencies for integration tests
+        run: npm ci --prefix site/morpho
+        shell: bash
+
       - name: Run test suite
         run: npm test
         shell: bash
