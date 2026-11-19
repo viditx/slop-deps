@@ -144,14 +144,15 @@ Windows release binaries (`slopdeps-installer.exe`) are currently self-distribut
 
 ---
 
-## How This Was Built
+## How This Was Built & AI Authorship
 
-**Engineered with AI agents over weeks of relentless audit cycles.**
+> **Full Disclosure on AI Commits:** Every line of code, test case, and commit in this repository was authored and executed by AI coding agents (Google Antigravity, Claude, DeepSeek) under human architectural orchestration and ruthless test verification.
 
-- Enforced pure Node.js standard library with zero external runtime packages.
-- Built an automated 96-test deterministic regression suite (all green).
-- Ran 3 rounds of red-team security audits to hunt down parser blindspots and TOML escapes.
-- Native Inno Setup 6 installer with verified PE resource headers.
+- **Human-Directed Architecture:** Threat modeling, scanner scope, and fail-closed exit contracts defined by Vidit.
+- **AI Agent Execution:** 100% of commits, AST lexers, registry clients, and CI workflows implemented by AI agents.
+- **Verification Over Trust:** Zero code accepted without passing the automated 96-test deterministic regression suite and zero-runtime-dependency CI invariant.
+- **Red-Team Hardened:** Subjected to 3 rounds of adversarial audits to eliminate parser blindspots, TOML escapes, and secret leakage.
+- **Native Windows Release:** Inno Setup 6 installer with verified PE resource headers and SHA-256 release checksums.
 
 ---
 
