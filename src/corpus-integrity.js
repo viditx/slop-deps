@@ -58,7 +58,9 @@ export async function verifyCorpusIntegrity(customManifestPath = null) {
     }
 
     const actualHash = createHash('sha256').update(fileData).digest('hex');
-    if (actualHash !== meta.sha256) {
+    // Also check LF-normalized hash for cross-platform Git CRLF checkout resilience
+    const normalizedHash = createHash('sha256').update(fileData.toString('utf-8').replace(/\r\n/g, '\n')).digest('hex');
+    if (actualHash !== meta.sha256 && normalizedHash !== meta.sha256) {
       const error = new Error(
         `Corpus integrity verification failed: SHA-256 mismatch for '${relPath}' (expected ${meta.sha256}, got ${actualHash}). Corpus may be corrupted or tampered.`
       );

@@ -1,0 +1,4 @@
+# Enforce LF for text files across all platforms to prevent CRLF hash mutation
+* text=auto eol=lf
+corpus/* text eol=lf
+src/corpus.generated.js text eol=lf
