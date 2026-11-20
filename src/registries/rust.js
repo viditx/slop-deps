@@ -4,7 +4,7 @@ import { fetchWithRetry } from './http.js';
 
 const CRATES_URL = 'https://crates.io/api/v1/crates/';
 // crates.io mandates a descriptive User-Agent for API clients
-const UA = 'slop-deps/1.0.0-alpha (github.com/viditx/slop-deps)';
+const UA = 'slop-deps/0.0.2-alpha (github.com/viditx/slop-deps)';
 
 const CACHE = new Map();
 const IN_FLIGHT = new Map();

@@ -8,7 +8,7 @@ const REPOS = {
   plugins: 'https://plugins.gradle.org/m2/'
 };
 
-const UA = 'slop-deps/1.0.0-alpha (github.com/viditx/slop-deps)';
+const UA = 'slop-deps/0.0.2-alpha (github.com/viditx/slop-deps)';
 const CACHE = new Map();
 const IN_FLIGHT = new Map();
 
