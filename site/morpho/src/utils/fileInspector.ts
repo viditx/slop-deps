@@ -97,7 +97,7 @@ export function formatByteSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export function detectFileEcosystem(fileName: string): FileEcosystem {
+export function detectFileEcosystem(fileName: string, rawContent?: string): FileEcosystem {
   const lower = fileName.trim().toLowerCase();
 
   // npm & web files (manifests, HTML, JS/TS, UI components)
@@ -136,6 +136,14 @@ export function detectFileEcosystem(fileName: string): FileEcosystem {
   // Rust files (Cargo manifest & sources)
   if (lower.endsWith('cargo.toml') || lower.endsWith('.rs')) {
     return 'crates';
+  }
+
+  // Content sniffing fallback
+  if (rawContent) {
+    const trimmed = rawContent.trim();
+    if (trimmed.startsWith('{') && trimmed.includes('"dependencies"')) return 'npm';
+    if (trimmed.includes('[dependencies]') || trimmed.includes('[package]')) return 'crates';
+    if (trimmed.includes('[tool.poetry]') || trimmed.includes('[project]')) return 'pypi';
   }
 
   return 'unknown';
@@ -583,7 +591,7 @@ export async function inspectDroppedFileAsync(
     concurrency,
     async (dep): Promise<InspectedPackage> => {
       const pkgName = dep.name;
-      const pkgEco: 'npm' | 'pypi' | 'crates' = (dep.ecosystem === 'cargo' ? 'crates' : dep.ecosystem) as any;
+      const pkgEco: 'npm' | 'pypi' | 'crates' = ((dep.ecosystem as string) === 'cargo' ? 'crates' : dep.ecosystem) as any;
       const checkName = pkgEco === 'pypi' ? normalizePypiName(pkgName) : pkgName;
 
       // 1. Builtin check

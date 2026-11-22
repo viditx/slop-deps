@@ -251,7 +251,7 @@ export async function scanFile(
 
     for (const rawPkg of record.packages) {
       const normalizedEco =
-        rawPkg.ecosystem === 'cargo' ? 'crates' : rawPkg.ecosystem;
+        (rawPkg.ecosystem as string) === 'cargo' ? 'crates' : rawPkg.ecosystem;
       const hasValidEco = VALID_ECOSYSTEMS.has(normalizedEco);
       const mappedEco: 'npm' | 'pypi' | 'crates' = hasValidEco
         ? normalizedEco
