@@ -1,5 +1,5 @@
 #define MyAppName "slop-deps"
-#define MyAppVersion "0.0.2-alpha"
+#define MyAppVersion "0.0.2"
 #define MyAppPublisher "Vidit Patil"
 #define MyAppURL "https://github.com/viditx/slop-deps"
 
