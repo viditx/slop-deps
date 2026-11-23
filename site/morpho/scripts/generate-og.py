@@ -52,16 +52,16 @@ draw.line([50, 85, WIDTH - 50, 85], fill=BORDER_COLOR, width=1)
 # 4. Main Hero Typography: SLOP-DEPS
 draw.text((58, 142), "SLOP-DEPS", fill=(20, 35, 30), font=font_bold)
 draw.text((60, 140), "SLOP-DEPS", fill=TEXT_WHITE, font=font_bold)
-draw.text((450, 155), "v1.0.0-alpha", fill=EMERALD, font=font_subtitle)
+draw.text((450, 155), "v0.0.2", fill=EMERALD, font=font_subtitle)
 
 # Tagline & description
 draw.text((60, 230), "Zero-dependency slopsquatting scanner.", fill=TEXT_WHITE, font=font_subtitle)
-draw.text((60, 275), "Statically extracts package imports. Verifies against npm, PyPI & crates.io before lockfile.", fill=TEXT_MUTED, font=font_meta)
+draw.text((60, 275), "Statically extracts package imports. Verifies against npm, PyPI, Crates & Maven before lockfile.", fill=TEXT_MUTED, font=font_meta)
 
 # 5. 3 Defense Pillars Box
 cards = [
-    ("AST EXTRACTOR", "Multi-manifest parser for JS, TS, Python & Rust source files"),
-    ("REGISTRY PROBE", "Direct live HTTPS query to npm, PyPI & crates.io with TTL cache"),
+    ("AST EXTRACTOR", "Multi-manifest parser for JS, TS, Python, Rust & Kotlin/Gradle"),
+    ("REGISTRY PROBE", "Direct live HTTPS query to npm, PyPI, crates.io & Maven Central"),
     ("TYPOSQUAT ENGINE", "Damerau-Levenshtein distance + visual homoglyph matching")
 ]
 
@@ -92,7 +92,7 @@ for i, (head, desc) in enumerate(cards):
 
 # 6. Bottom footer telemetry
 draw.line([50, 540, WIDTH - 50, 540], fill=BORDER_COLOR, width=1)
-draw.text((60, 565), "61/61 TESTS PASSING", fill=EMERALD, font=font_badge)
+draw.text((60, 565), "96/96 TESTS PASSING", fill=EMERALD, font=font_badge)
 draw.text((270, 565), "FAIL-CLOSED SECURITY", fill=TEXT_MUTED, font=font_badge)
 draw.text((490, 565), "SARIF 2.1.0 COMPLIANT", fill=TEXT_MUTED, font=font_badge)
 draw.text((WIDTH - 310, 565), "BY VIDIT PATIL (@viditx)", fill=TEXT_WHITE, font=font_badge)
