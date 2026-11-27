@@ -323,7 +323,7 @@ async function run() {
 
   const vResult = spawnSync(process.execPath, [binPath, '--version'], { encoding: 'utf-8' });
   assert.equal(vResult.status, 0, '--version must exit 0');
-  assert.ok(vResult.stdout.includes('0.0.3'), '--version must output version');
+  assert.ok(vResult.stdout.includes('0.0.4'), '--version must output version');
 
   const invResult = spawnSync(process.execPath, [binPath, '--unknown-flag'], { encoding: 'utf-8' });
   assert.equal(invResult.status, 2, 'Unrecognized option must exit 2');
@@ -1976,12 +1976,63 @@ fun main() {}
     assert.ok(fs.existsSync(hookPath), 'pre-commit hook file must be created');
     const hookContent = fs.readFileSync(hookPath, 'utf-8');
     assert.ok(hookContent.includes('slop-deps --staged --strict'), 'Hook must invoke slop-deps --staged --strict');
+    assert.ok(fs.existsSync(path.join(tempGitDir, 'SYSTEM.md')), 'SYSTEM.md must be initialized');
 
     fs.rmSync(tempGitDir, { recursive: true, force: true });
   }
   console.log('  ✔ PASS: ad-hoc package check and 1-click git pre-commit hook verified\n');
 
-  console.log('🎉 All 98 test assertions passed successfully!');
+  // Test 99: AI Agent SYSTEM.md instructions auto-update and user security warning
+  console.log('Test 99: AI Agent SYSTEM.md guard update and user warning on hallucinations');
+  {
+    const os = await import('node:os');
+    const { updateAgentSystemInstructions } = await import('../src/agent-guard.js');
+    const binPath = path.resolve('bin/slop-deps.js');
+
+    const tempGuardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-guard-test-'));
+
+    // 1. Initial instruction write
+    const res1 = updateAgentSystemInstructions(tempGuardDir, [
+      { name: 'fake-super-auth-lib', ecosystem: 'npm' }
+    ]);
+    assert.equal(res1.success, true);
+    const systemMdPath = path.join(tempGuardDir, 'SYSTEM.md');
+    assert.ok(fs.existsSync(systemMdPath), 'SYSTEM.md must be created');
+    let mdContent = fs.readFileSync(systemMdPath, 'utf-8');
+    assert.ok(mdContent.includes('fake-super-auth-lib'), 'Must include blocked package name');
+    assert.ok(mdContent.includes('npx slop-deps check <package-name>'), 'Must include mandatory check instruction');
+
+    // 2. Add custom user notes to SYSTEM.md and re-update (must preserve user notes)
+    fs.writeFileSync(systemMdPath, `# My Custom Project Notes\nDo not delete this!\n\n${mdContent}`);
+    const res2 = updateAgentSystemInstructions(tempGuardDir, [
+      { name: 'fake-super-auth-lib', ecosystem: 'npm' },
+      { name: 'phantom-crypto-helper', ecosystem: 'pypi' }
+    ]);
+    assert.equal(res2.success, true);
+    mdContent = fs.readFileSync(systemMdPath, 'utf-8');
+    assert.ok(mdContent.includes('# My Custom Project Notes'), 'Must preserve existing custom user content');
+    assert.ok(mdContent.includes('phantom-crypto-helper'), 'Must include newly blocked package');
+
+    // 3. CLI execution on a folder with hallucinated package triggers warning and SYSTEM.md update
+    const cliTestDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-cli-warn-'));
+    fs.writeFileSync(path.join(cliTestDir, 'index.js'), "import fake from 'fake-hallucinated-package-xyz-99';\n");
+
+    const cliRun = spawnSync(process.execPath, [binPath, cliTestDir], { encoding: 'utf-8' });
+    assert.equal(cliRun.status, 1, 'Scan with hallucination must exit 1');
+    assert.ok(cliRun.stdout.includes('SECURITY WARNING: AI AGENT HALLUCINATIONS DETECTED'), 'CLI output must warn user loudly');
+    assert.ok(cliRun.stdout.includes('DO NOT run \'npm install\''), 'CLI must warn user not to install');
+
+    const autoSystemMd = path.join(cliTestDir, 'SYSTEM.md');
+    assert.ok(fs.existsSync(autoSystemMd), 'CLI must automatically create SYSTEM.md on hallucination detection');
+    const autoContent = fs.readFileSync(autoSystemMd, 'utf-8');
+    assert.ok(autoContent.includes('fake-hallucinated-package-xyz-99'), 'SYSTEM.md must list the detected hallucination');
+
+    fs.rmSync(tempGuardDir, { recursive: true, force: true });
+    fs.rmSync(cliTestDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: AI agent SYSTEM.md instructions auto-updated and user warned\n');
+
+  console.log('🎉 All 99 test assertions passed successfully!');
 }
 
 run().catch((err) => {

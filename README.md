@@ -19,7 +19,7 @@ Windows standalone binary `slopdeps-installer.exe` is also available on [Release
 [![npm version](https://img.shields.io/npm/v/slop-deps?color=cb3837)](https://www.npmjs.com/package/slop-deps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
-[![Tests: 98 Passing](https://img.shields.io/badge/Tests-98%2F98%20PASS-brightgreen.svg)](test/run-tests.js)
+[![Tests: 99 Passing](https://img.shields.io/badge/Tests-99%2F99%20PASS-brightgreen.svg)](test/run-tests.js)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
 ```text
@@ -109,15 +109,22 @@ slopdeps --strict
 
 Autonomous coding agents frequently hallucinate dependencies and immediately run `npm install <fake>` or `pip install <fake>` in background tool calls before a human can inspect the command.
 
-### 1. Pre-Commit Hook (1-Command Install)
+### 1. Pre-Commit Hook & SYSTEM.md Initialization (1-Command Install)
 Run once in your repository to permanently block agents from committing hallucinated imports:
 ```bash
 npx slop-deps init
 ```
-This writes a lightweight, zero-dependency `.git/hooks/pre-commit` script that runs `npx slop-deps --staged --strict`. If an AI agent stages a file referencing non-existent packages, `git commit` fails with exit code 1.
+This writes:
+1. A lightweight, zero-dependency `.git/hooks/pre-commit` script that runs `npx slop-deps --staged --strict`.
+2. An AI agent safety block in `SYSTEM.md` instructing autonomous agents never to install unverified packages.
 
-### 2. Pre-Install Verification for Agents
-Instruct your AI agent via `.cursorrules` or `CLAUDE.md`:
+### 2. Auto-Updating SYSTEM.md on Hallucination Detection
+Whenever `slop-deps` catches a hallucinated package during local scans or pre-commit checks:
+- It issues a prominent **SECURITY WARNING** advising you not to run `npm install` or `pip install`.
+- It automatically injects the blocked package names into `SYSTEM.md` so the AI agent reads its own mistakes and self-corrects on its next turn.
+
+### 3. Pre-Install Verification for Agents
+Instruct your AI agent via `SYSTEM.md`, `.cursorrules`, or `CLAUDE.md`:
 ```markdown
 Before executing `npm install <pkg>` or `pip install <pkg>`, verify the package exists:
 $ npx slop-deps check <pkg>

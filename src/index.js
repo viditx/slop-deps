@@ -660,3 +660,5 @@ export async function scanStagedFiles(targetDir = process.cwd(), options = {}) {
   result.stagedFileCount = stagedFiles.size;
   return result;
 }
+
+export { updateAgentSystemInstructions, buildAgentInstructions } from './agent-guard.js';

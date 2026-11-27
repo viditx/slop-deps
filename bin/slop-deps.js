@@ -3,11 +3,12 @@
 import path from 'path';
 import os from 'os';
 import { scanDirectory, scanStagedFiles } from '../src/index.js';
-import { printBanner, printResults } from '../src/reporter.js';
+import { printBanner, printResults, printUserWarning } from '../src/reporter.js';
+import { updateAgentSystemInstructions } from '../src/agent-guard.js';
 import { toSarif } from '../src/sarif.js';
 import { updateCorpus } from '../src/update-corpus.js';
 
-const VERSION = '0.0.3';
+const VERSION = '0.0.4';
 
 const FIX_SYSTEM = `You fix broken package imports in source code. The scanner found imports referencing packages that do not exist on the registry (AI hallucinations) or that typosquat popular packages. For each finding, return the corrected import line: keep the language, style and named bindings identical, only change the package specifier to the real package the code clearly intended. If no real package plausibly matches, set "new" to null. Respond ONLY with a JSON array, no prose, no code fences.`;
 
@@ -110,6 +111,12 @@ async function run() {
     const hookScript = `#!/bin/sh\n# slop-deps pre-commit security gate against hallucinated packages\nnpx slop-deps --staged --strict\n`;
     fs.writeFileSync(preCommitHook, hookScript, { mode: 0o755 });
     console.log('  \x1b[32m✔\x1b[0m Installed git pre-commit hook at .git/hooks/pre-commit');
+
+    const guardRes = updateAgentSystemInstructions(process.cwd(), []);
+    if (guardRes.success) {
+      console.log(`  \x1b[32m✔\x1b[0m Initialized AI agent dependency safety guard in \x1b[1m${guardRes.file}\x1b[0m`);
+    }
+
     console.log('  Git will now automatically block any commit containing unverified AI dependencies.\n');
     process.exit(0);
   }
@@ -218,8 +225,19 @@ async function run() {
   } else if (isJson) {
     console.log(JSON.stringify({ findings, stats, ...(result.staged ? { staged: true, stagedFileCount: result.stagedFileCount } : {}) }, null, 2));
   } else {
-    
     printResults(findings, stats);
+  }
+
+  // AI Agent & User Warning Condition: Blocked packages update SYSTEM.md and alert user
+  const criticalPackages = findings.filter(f => f.risk === 'CRITICAL' || f.status === 'HALLUCINATED');
+  if (criticalPackages.length > 0) {
+    const guardRes = updateAgentSystemInstructions(targetDir, criticalPackages);
+    if (!isJson && !isSarif) {
+      printUserWarning(criticalPackages.length);
+      if (guardRes.success) {
+        console.log(`  \x1b[32m✔\x1b[0m Auto-updated AI agent rules in \x1b[1m${guardRes.file}\x1b[0m with blocked package list.\n`);
+      }
+    }
   }
 
   if (isFix && !isSarif && !isJson) {

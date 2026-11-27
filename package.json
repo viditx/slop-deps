@@ -1,6 +1,6 @@
 {
   "name": "slop-deps",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Fast, zero-dependency scanner for unverified package imports and AI-generated hallucinations across npm, PyPI, Crates.io, and Maven/Gradle.",
   "main": "src/index.js",
   "type": "module",

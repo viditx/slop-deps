@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-11-27
+
+### Added
+- **AI Agent `SYSTEM.md` Instructions Auto-Sync**:
+  - Automatically writes or updates `SYSTEM.md` in the target repository whenever non-existent or hallucinated package imports are detected.
+  - Lists the exact blocked package names and injects mandatory rules instructing coding agents (Cursor, Claude Code, Copilot, Antigravity) to run `npx slop-deps check <pkg>` before installing.
+  - Seamlessly preserves existing user notes in `SYSTEM.md` using delimited comment boundaries (`<!-- SLOP-DEPS:AI-GUARD:START -->`).
+  - `slopdeps init` also initializes `SYSTEM.md` alongside `.git/hooks/pre-commit`.
+- **Prominent User Security Warning**:
+  - Displays a high-visibility terminal alert banner warning the developer never to run `npm install` or `pip install` while hallucinated dependencies exist.
+- **Expanded Test Suite**:
+  - Added Test 99 validating `SYSTEM.md` auto-updating, content preservation, and CLI warning output (99/99 tests pass).
+
 ## [0.0.3] - 2026-11-27
 
 ### Added

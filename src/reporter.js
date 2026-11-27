@@ -14,7 +14,7 @@ const c = isColorSupported
   : Object.fromEntries(Object.keys(RAW).map(k => [k, '']));
 
 export function printBanner() {
-  console.log(`${c.dim}slop-deps v0.0.3${c.reset}\n`);
+  console.log(`${c.dim}slop-deps v0.0.4${c.reset}\n`);
 }
 
 export function printResults(findings, stats) {
@@ -63,4 +63,14 @@ export function printResults(findings, stats) {
   } else {
     console.log(`  ${c.green}✔${c.reset} All ${stats.total} packages verified on registry.\n`);
   }
+}
+
+export function printUserWarning(criticalCount) {
+  console.log(`  ${c.red}${c.bold}⚠️  SECURITY WARNING: AI AGENT HALLUCINATIONS DETECTED!${c.reset}`);
+  console.log(`  ${c.red}------------------------------------------------------------------------${c.reset}`);
+  console.log(`  Found ${c.bold}${criticalCount}${c.reset}${c.red} non-existent package import(s) hallucinated by AI coding assistants.${c.reset}`);
+  console.log(`  ${c.bold}DO NOT run 'npm install' or 'pip install' on this repository right now!${c.reset}`);
+  console.log(`  Attackers actively monitor and register hallucinated package names with malicious`);
+  console.log(`  preinstall/setup.py scripts to compromise developer machines.`);
+  console.log(`  ${c.red}------------------------------------------------------------------------${c.reset}\n`);
 }
