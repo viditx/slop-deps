@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.3] - 2026-11-27
 
 ### Added
+- **Ad-hoc Package Verification (`check` subcommand)**:
+  - Instant pre-install verification CLI: `npx slop-deps check <package-name> [--npm | --pypi | --crates | --maven]`.
+  - Machine-readable `--json` output and exit codes (0: exists/clean, 1: hallucinated/typosquat) for agentic and tool pre-installation validation.
+- **Automated Git Pre-Commit Hook (`init` subcommand)**:
+  - 1-command zero-dependency git hook installer: `npx slop-deps init`.
+  - Configures `.git/hooks/pre-commit` to gate commits with `npx slop-deps --staged --strict`, preventing autonomous agents from silently committing hallucinated imports.
 - **Deno & Bun Manifest Support**:
   - Full AST dependency extraction for `deno.json` and `deno.jsonc` manifests.
   - Extracts and resolves `npm:` specifiers from top-level `imports` and path-specific `scopes`.
@@ -21,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Standard 3-line copy-paste CI workflow for pre-merge pipeline gates (`npx slop-deps --strict`).
 
 ### Changed
-- Expanded automated regression suite to 97 passing tests.
+- Expanded automated regression suite to 98 passing tests.
+- Synchronized version string to `0.0.3` across all CLI banners, SARIF outputs, and registry HTTP User-Agents.
 
 ## [0.0.2] - 2026-11-20
 

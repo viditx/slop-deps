@@ -7,7 +7,7 @@ import { printBanner, printResults } from '../src/reporter.js';
 import { toSarif } from '../src/sarif.js';
 import { updateCorpus } from '../src/update-corpus.js';
 
-const VERSION = '0.0.2';
+const VERSION = '0.0.3';
 
 const FIX_SYSTEM = `You fix broken package imports in source code. The scanner found imports referencing packages that do not exist on the registry (AI hallucinations) or that typosquat popular packages. For each finding, return the corrected import line: keep the language, style and named bindings identical, only change the package specifier to the real package the code clearly intended. If no real package plausibly matches, set "new" to null. Respond ONLY with a JSON array, no prose, no code fences.`;
 
@@ -19,6 +19,12 @@ slop-deps: Dependency Hallucination & Typosquat Scanner
 
 USAGE:
   npx slop-deps [options]
+  npx slop-deps check <package-name> [--npm | --pypi | --crates | --maven]
+  npx slop-deps init
+
+COMMANDS:
+  check <name>        Verify a single package name against registry before install
+  init                Install zero-dependency .git/hooks/pre-commit security gate
 
 OPTIONS:
   -d, --dir <path>    Specify directory to scan (default: current working directory)
@@ -59,34 +65,102 @@ const isFix = args.includes('--fix');
 let explicitDir = false;
 let targetDir = process.cwd();
 
-for (let i = 0; i < args.length; i++) {
-  const arg = args[i];
-  if (arg === '--dir' || arg === '-d') {
-    if (args[i + 1] && !args[i + 1].startsWith('-')) {
-      targetDir = path.resolve(process.cwd(), args[++i]);
+if (args[0] !== 'init' && args[0] !== 'check') {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--dir' || arg === '-d') {
+      if (args[i + 1] && !args[i + 1].startsWith('-')) {
+        targetDir = path.resolve(process.cwd(), args[++i]);
+        explicitDir = true;
+      } else {
+        console.error(`\x1b[31m✖ ERROR:\x1b[0m Option '${arg}' requires a directory path.\n`);
+        process.exit(2);
+      }
+    } else if (arg.startsWith('--dir=')) {
+      targetDir = path.resolve(process.cwd(), arg.slice(6));
       explicitDir = true;
-    } else {
-      console.error(`\x1b[31m✖ ERROR:\x1b[0m Option '${arg}' requires a directory path.\n`);
+    } else if (arg.startsWith('-d=')) {
+      targetDir = path.resolve(process.cwd(), arg.slice(3));
+      explicitDir = true;
+    } else if (['--json', '--strict', '--sarif', '--staged', '--offline', '--private', '--trust-config', '--clear-cache', '--update-corpus', '--fix'].includes(arg)) {
+      // Valid flags
+    } else if (!arg.startsWith('-')) {
+      targetDir = path.resolve(process.cwd(), arg);
+      explicitDir = true;
+    } else if (arg.startsWith('-')) {
+      console.error(`\x1b[31m✖ ERROR:\x1b[0m Unrecognized option: '${arg}'. Run 'slop-deps --help' for usage.\n`);
       process.exit(2);
     }
-  } else if (arg.startsWith('--dir=')) {
-    targetDir = path.resolve(process.cwd(), arg.slice(6));
-    explicitDir = true;
-  } else if (arg.startsWith('-d=')) {
-    targetDir = path.resolve(process.cwd(), arg.slice(3));
-    explicitDir = true;
-  } else if (['--json', '--strict', '--sarif', '--staged', '--offline', '--private', '--trust-config', '--clear-cache', '--update-corpus', '--fix'].includes(arg)) {
-    // Valid flags
-  } else if (!arg.startsWith('-')) {
-    targetDir = path.resolve(process.cwd(), arg);
-    explicitDir = true;
-  } else if (arg.startsWith('-')) {
-    console.error(`\x1b[31m✖ ERROR:\x1b[0m Unrecognized option: '${arg}'. Run 'slop-deps --help' for usage.\n`);
-    process.exit(2);
   }
 }
 
 async function run() {
+  if (args[0] === 'init') {
+    const fs = await import('fs');
+    const gitDir = path.resolve(process.cwd(), '.git');
+    if (!fs.existsSync(gitDir) || !fs.statSync(gitDir).isDirectory()) {
+      console.error('\x1b[31m✖ ERROR:\x1b[0m No .git repository found in current directory. Run this inside your git repo.\n');
+      process.exit(2);
+    }
+    const hooksDir = path.join(gitDir, 'hooks');
+    if (!fs.existsSync(hooksDir)) {
+      fs.mkdirSync(hooksDir, { recursive: true });
+    }
+    const preCommitHook = path.join(hooksDir, 'pre-commit');
+    const hookScript = `#!/bin/sh\n# slop-deps pre-commit security gate against hallucinated packages\nnpx slop-deps --staged --strict\n`;
+    fs.writeFileSync(preCommitHook, hookScript, { mode: 0o755 });
+    console.log('  \x1b[32m✔\x1b[0m Installed git pre-commit hook at .git/hooks/pre-commit');
+    console.log('  Git will now automatically block any commit containing unverified AI dependencies.\n');
+    process.exit(0);
+  }
+
+  if (args[0] === 'check') {
+    const pkgArg = args[1];
+    if (!pkgArg || pkgArg.startsWith('-')) {
+      console.error('\x1b[31m✖ ERROR:\x1b[0m Package name required: slop-deps check <package-name> [--ecosystem npm|pypi|crates|maven]\n');
+      process.exit(2);
+    }
+    let eco = 'npm';
+    for (let i = 2; i < args.length; i++) {
+      if (args[i] === '--pypi' || args[i] === '-p') eco = 'pypi';
+      else if (args[i] === '--crates' || args[i] === '-c') eco = 'crates';
+      else if (args[i] === '--maven' || args[i] === '-m') eco = 'maven';
+      else if (args[i] === '--npm') eco = 'npm';
+      else if (args[i].startsWith('--ecosystem=')) eco = args[i].split('=')[1].toLowerCase();
+    }
+
+    let checkResult;
+    if (eco === 'pypi') {
+      const { checkPyPiPackage } = await import('../src/registries/pypi.js');
+      checkResult = await checkPyPiPackage(pkgArg);
+    } else if (eco === 'crates') {
+      const { checkCratesPackage } = await import('../src/registries/rust.js');
+      checkResult = await checkCratesPackage(pkgArg);
+    } else if (eco === 'maven') {
+      const { checkMavenPackage } = await import('../src/registries/maven.js');
+      checkResult = await checkMavenPackage(pkgArg);
+    } else {
+      const { checkNpmPackage } = await import('../src/registries/npm.js');
+      checkResult = await checkNpmPackage(pkgArg);
+    }
+
+    if (args.includes('--json')) {
+      console.log(JSON.stringify(checkResult, null, 2));
+    } else {
+      printBanner();
+      if (checkResult.exists) {
+        console.log(`  \x1b[32m✔ VERIFIED\x1b[0m  \x1b[1m${checkResult.name}\x1b[0m (${eco}) exists on registry.`);
+        if (checkResult.risk === 'WARN' || checkResult.message?.includes('edit from')) {
+          console.log(`  \x1b[33m▲ WARN\x1b[0m      ${checkResult.message}`);
+        }
+        console.log('');
+      } else {
+        console.log(`  \x1b[31m✖ CRITICAL\x1b[0m  \x1b[1m${checkResult.name}\x1b[0m (${eco})`);
+        console.log(`              ${checkResult.message}\n`);
+      }
+    }
+    process.exit(checkResult.exists ? 0 : 1);
+  }
   if (isClearCache) {
     const { cacheClear, cachePath } = await import('../src/registries/cache.js');
     const wiped = await cacheClear();

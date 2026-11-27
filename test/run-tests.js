@@ -323,7 +323,7 @@ async function run() {
 
   const vResult = spawnSync(process.execPath, [binPath, '--version'], { encoding: 'utf-8' });
   assert.equal(vResult.status, 0, '--version must exit 0');
-  assert.ok(vResult.stdout.includes('0.0.2'), '--version must output version');
+  assert.ok(vResult.stdout.includes('0.0.3'), '--version must output version');
 
   const invResult = spawnSync(process.execPath, [binPath, '--unknown-flag'], { encoding: 'utf-8' });
   assert.equal(invResult.status, 2, 'Unrecognized option must exit 2');
@@ -1944,7 +1944,44 @@ fun main() {}
   }
   console.log('  ✔ PASS: Deno and Bun manifest support (deno.json / deno.jsonc) with comments and scopes verified\n');
 
-  console.log('🎉 All 97 test assertions passed successfully!');
+  // Test 98: Ad-hoc package verification ('check') and git hook installation ('init')
+  console.log('Test 98: CLI ad-hoc check and git hook init');
+  {
+    const os = await import('node:os');
+    const binPath = path.resolve('bin/slop-deps.js');
+
+    // 1. slopdeps check verified package exits 0
+    const checkGood = spawnSync(process.execPath, [binPath, 'check', 'react', '--json'], { encoding: 'utf-8' });
+    assert.equal(checkGood.status, 0, 'slop-deps check react must exit 0');
+    const goodJson = JSON.parse(checkGood.stdout);
+    assert.equal(goodJson.exists, true, 'react must exist');
+    assert.equal(goodJson.name, 'react');
+
+    // 2. slopdeps check non-existent package exits 1
+    const checkBad = spawnSync(process.execPath, [binPath, 'check', 'fake-nonexistent-slop-pkg-test-98', '--json'], { encoding: 'utf-8' });
+    assert.equal(checkBad.status, 1, 'slop-deps check fake pkg must exit 1');
+    const badJson = JSON.parse(checkBad.stdout);
+    assert.equal(badJson.exists, false, 'fake package must not exist');
+
+    // 3. slopdeps check without package name exits 2
+    const checkNoArg = spawnSync(process.execPath, [binPath, 'check'], { encoding: 'utf-8' });
+    assert.equal(checkNoArg.status, 2, 'slop-deps check without arg must exit 2');
+
+    // 4. slopdeps init in temporary git repo
+    const tempGitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-init-test-'));
+    fs.mkdirSync(path.join(tempGitDir, '.git'));
+    const initRun = spawnSync(process.execPath, [binPath, 'init'], { cwd: tempGitDir, encoding: 'utf-8' });
+    assert.equal(initRun.status, 0, 'slop-deps init must exit 0 in a git repository');
+    const hookPath = path.join(tempGitDir, '.git', 'hooks', 'pre-commit');
+    assert.ok(fs.existsSync(hookPath), 'pre-commit hook file must be created');
+    const hookContent = fs.readFileSync(hookPath, 'utf-8');
+    assert.ok(hookContent.includes('slop-deps --staged --strict'), 'Hook must invoke slop-deps --staged --strict');
+
+    fs.rmSync(tempGitDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: ad-hoc package check and 1-click git pre-commit hook verified\n');
+
+  console.log('🎉 All 98 test assertions passed successfully!');
 }
 
 run().catch((err) => {

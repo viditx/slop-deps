@@ -19,7 +19,7 @@ Windows standalone binary `slopdeps-installer.exe` is also available on [Release
 [![npm version](https://img.shields.io/npm/v/slop-deps?color=cb3837)](https://www.npmjs.com/package/slop-deps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
-[![Tests: 97 Passing](https://img.shields.io/badge/Tests-97%2F97%20PASS-brightgreen.svg)](test/run-tests.js)
+[![Tests: 98 Passing](https://img.shields.io/badge/Tests-98%2F98%20PASS-brightgreen.svg)](test/run-tests.js)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
 ```text
@@ -69,6 +69,13 @@ The moment you run `npm install` or `pip install`:
 # Scan current repository
 slopdeps
 
+# Verify a single package BEFORE install (instant pre-install gate)
+slopdeps check express
+slopdeps check fake-jwt-decoder --json
+
+# Install zero-dependency git pre-commit hook (blocks agent/human hallucinated commits)
+slopdeps init
+
 # Scan only git-staged files (fast pre-commit)
 slopdeps --staged
 
@@ -84,15 +91,38 @@ slopdeps --sarif > results.sarif
 slopdeps --strict
 ```
 
-| Flag | Purpose |
+| Command / Flag | Purpose |
 |:---|:---|
+| `check <name>` | Verify a single package name against registries before running `install`. |
+| `init` | Install zero-dependency `.git/hooks/pre-commit` hook to automatically gate commits. |
 | `-d, --dir <path>` | Target directory to scan (default: cwd). |
 | `--staged` | Pre-commit mode: only scans git-staged files. |
 | `--offline` | Air-gapped verification via local corpus + cache (zero network calls). |
 | `--fix` | AI-assisted import repair with atomic `.bak` backups and safety guards. |
 | `--strict` | Fail-closed gate: exit code 2 on warnings, critical findings, or errors. |
-| `--json / --sarif` | Machine-readable outputs for GitHub Code Scanning and CI pipelines. |
+| `--json / --sarif` | Machine-readable outputs for GitHub Code Scanning, agents, and CI pipelines. |
 | `--update-corpus` | Refresh popularity dataset from live registries & recalculate SHA-256 manifest. |
+
+---
+
+## Autonomous AI Agent Guard (Cursor, Claude Code, Windsurf)
+
+Autonomous coding agents frequently hallucinate dependencies and immediately run `npm install <fake>` or `pip install <fake>` in background tool calls before a human can inspect the command.
+
+### 1. Pre-Commit Hook (1-Command Install)
+Run once in your repository to permanently block agents from committing hallucinated imports:
+```bash
+npx slop-deps init
+```
+This writes a lightweight, zero-dependency `.git/hooks/pre-commit` script that runs `npx slop-deps --staged --strict`. If an AI agent stages a file referencing non-existent packages, `git commit` fails with exit code 1.
+
+### 2. Pre-Install Verification for Agents
+Instruct your AI agent via `.cursorrules` or `CLAUDE.md`:
+```markdown
+Before executing `npm install <pkg>` or `pip install <pkg>`, verify the package exists:
+$ npx slop-deps check <pkg>
+If exit code is non-zero, DO NOT install. Choose a verified alternative.
+```
 
 ---
 
