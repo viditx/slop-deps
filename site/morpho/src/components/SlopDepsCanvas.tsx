@@ -10,6 +10,7 @@ import {
   computeScrollDockState,
   createInitialSwarm,
   EnginePhase,
+  fastSin,
   Point2D,
   Pointer3D,
   stepBinarySwarm,
@@ -262,6 +263,113 @@ function triggerEightBitCopyChirp(audioCtxRef: React.MutableRefObject<AudioConte
   }
 }
 
+interface BoxScatterParticle {
+  relX: number;
+  relY: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  burstAngle: number;
+  burstSpeed: number;
+  driftAngle: number;
+  driftSpeed: number;
+  bit: 0 | 1;
+  alpha: number;
+  phase: number;
+  phaseSpeed: number;
+}
+
+function generateBoxScatterParticles(
+  initialAnchorX: number,
+  initialAnchorY: number,
+  initialScrollY: number = 0
+): BoxScatterParticle[] {
+  const pts: BoxScatterParticle[] = [];
+  const count = 340;
+  const initialU = Math.max(0, Math.min(1, initialScrollY / 150));
+
+  for (let i = 0; i < count; i++) {
+    let relX = 0;
+    let relY = 0;
+    const bit: 0 | 1 = i % 2 === 0 ? 0 : 1;
+
+    if (i < 120) {
+      const perimeter = (i / 120) * (2 * (280 + 48));
+      if (perimeter < 280) {
+        relX = -140 + perimeter;
+        relY = -24;
+      } else if (perimeter < 280 + 48) {
+        relX = 140;
+        relY = -24 + (perimeter - 280);
+      } else if (perimeter < 2 * 280 + 48) {
+        relX = 140 - (perimeter - 328);
+        relY = 24;
+      } else {
+        relX = -140;
+        relY = 24 - (perimeter - 608);
+      }
+      relX += ((i % 5) - 2) * 1.5;
+      relY += ((i % 3) - 1) * 1.5;
+    } else if (i < 160) {
+      const frac = (i - 120) / 40;
+      relX = -110 + frac * 220;
+      relY = ((i % 5) - 2) * 3;
+    } else if (i < 250) {
+      const frac = (i - 160) / 90;
+      relX = -230 + frac * 460;
+      relY = 52 + ((i % 4) - 1.5) * 8;
+    } else {
+      const frac = (i - 250) / 90;
+      relX = -210 + frac * 420;
+      relY = -50 + ((i % 4) - 1.5) * 6;
+    }
+
+    const angleFromCenter = Math.atan2(relY, relX);
+    const burstAngle = angleFromCenter + (((i * 19) % 11) - 5) * 0.08 - 0.35;
+    const burstSpeed = 1.4 + ((i * 31) % 19) * 0.12;
+    const driftAngle = ((i * 71) % 360) * (Math.PI / 180);
+    const driftSpeed = 0.22 + ((i % 6) * 0.05);
+    const phase = ((i * 41) % 100) * 0.0628;
+    const phaseSpeed = 0.02 + ((i % 5) * 0.006);
+
+    // Initialize (x, y) immediately from anchor, preventing (0,0) blob on scroll restore!
+    let initX = initialAnchorX + relX;
+    let initY = initialAnchorY + relY;
+    let initAlpha = 0;
+
+    if (initialU >= 0.98) {
+      const burstDist = burstSpeed * 155;
+      initX = initialAnchorX + relX + Math.cos(burstAngle) * burstDist;
+      initY = initialAnchorY + relY + Math.sin(burstAngle) * burstDist - 95;
+      initAlpha = Math.max(0, Math.min(0.96, (0.22 + 0.34 * fastSin(phase)) * initialU));
+    } else if (initialU > 0.001) {
+      const burstDist = burstSpeed * initialU * 155;
+      initX = initialAnchorX + relX + Math.cos(burstAngle) * burstDist;
+      initY = initialAnchorY + relY + Math.sin(burstAngle) * burstDist - initialU * 95;
+      initAlpha = Math.max(0, Math.min(0.92, initialU * 1.5) * (0.65 + 0.35 * fastSin(phase)));
+    }
+
+    pts.push({
+      relX,
+      relY,
+      x: initX,
+      y: initY,
+      vx: Math.cos(driftAngle) * driftSpeed,
+      vy: Math.sin(driftAngle) * driftSpeed,
+      burstAngle,
+      burstSpeed,
+      driftAngle,
+      driftSpeed,
+      bit,
+      alpha: initAlpha,
+      phase,
+      phaseSpeed,
+    });
+  }
+  return pts;
+}
+
 export function SlopDepsCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const skipIntroRef = useRef<(() => void) | null>(null);
@@ -274,10 +382,11 @@ export function SlopDepsCanvas() {
   const [slopDockedUi, setSlopDockedUi] = useState(false);
   const [depsDockedUi, setDepsDockedUi] = useState(false);
   const [copiedHeroChip, setCopiedHeroChip] = useState(false);
+  const heroSubPitchRef = useRef<HTMLElement | null>(null);
 
   const handleCopyHeroChip = async () => {
     try {
-      await navigator.clipboard.writeText('slopdeps');
+      await navigator.clipboard.writeText('npm i -g slop-deps');
       triggerEightBitCopyChirp(audioCtxRef);
     } catch {
       // Ignore clipboard permission errors
@@ -295,6 +404,11 @@ export function SlopDepsCanvas() {
     let animationFrameId = 0;
     let width = window.innerWidth;
     let height = window.innerHeight;
+    const boxParticles = generateBoxScatterParticles(
+      width * 0.5,
+      height - 165,
+      typeof window !== 'undefined' ? window.scrollY || 0 : 0
+    );
 
     const cpuCores =
       typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
@@ -498,7 +612,9 @@ export function SlopDepsCanvas() {
         heroSlopPts,
         heroDepsPts,
         cornerSlopPts,
-        cornerDepsPts
+        cornerDepsPts,
+        width,
+        height
       );
       const scrollY = window.scrollY || 0;
       const dock = computeScrollDockState(scrollY, slopMaxY, depsMaxY);
@@ -719,12 +835,22 @@ export function SlopDepsCanvas() {
         }
       }
 
+      let boxScatterProgress = 0;
       if (currentPhase === 'main') {
         if (!rebuiltAtMain) {
           rebuiltAtMain = true;
           rebuildAfterFontsLoaded();
         }
         const scrollY = window.scrollY || 0;
+        boxScatterProgress = Math.max(0, Math.min(1, scrollY / 150));
+
+        if (heroSubPitchRef.current) {
+          const el = heroSubPitchRef.current;
+          const domAlpha = Math.max(0, 1 - boxScatterProgress * 1.6);
+          el.style.opacity = domAlpha.toFixed(3);
+          el.style.pointerEvents = domAlpha < 0.05 ? 'none' : 'auto';
+        }
+
         const deltaScrollY = scrollY - lastScrollY;
         lastScrollY = scrollY;
 
@@ -872,18 +998,34 @@ export function SlopDepsCanvas() {
           }
           ctx.drawImage(sprite, p.x - half, p.y - half, dim, dim);
         } else if (mp >= 0.999) {
-          if (currentAlpha !== 0.96) {
-            currentAlpha = 0.96;
-            ctx.globalAlpha = 0.96;
+          if (p.cornerAlpha > 0.01) {
+            if (currentAlpha !== 0.96) {
+              currentAlpha = 0.96;
+              ctx.globalAlpha = 0.96;
+            }
+            const sprite = p.bit === 0 ? sprite0Corner : sprite1Corner;
+            ctx.drawImage(
+              sprite,
+              p.x - halfCorner,
+              p.y - halfCorner,
+              cornerDim,
+              cornerDim
+            );
+          } else {
+            const safeAlpha = Math.max(0, Math.min(0.96, p.alpha));
+            if (Math.abs(safeAlpha - currentAlpha) > 0.02) {
+              currentAlpha = safeAlpha;
+              ctx.globalAlpha = currentAlpha;
+            }
+            const sprite = p.bit === 0 ? sprite0Corner : sprite1Corner;
+            ctx.drawImage(
+              sprite,
+              (p.x - halfCorner) | 0,
+              (p.y - halfCorner) | 0,
+              cornerDim,
+              cornerDim
+            );
           }
-          const sprite = p.bit === 0 ? sprite0Corner : sprite1Corner;
-          ctx.drawImage(
-            sprite,
-            p.x - halfCorner,
-            p.y - halfCorner,
-            cornerDim,
-            cornerDim
-          );
         } else {
           if (currentAlpha !== 0.94) {
             currentAlpha = 0.94;
@@ -897,6 +1039,57 @@ export function SlopDepsCanvas() {
             coreDim,
             coreDim
           );
+        }
+      }
+
+      // Render hero sub-pitch box disintegration particles
+      if (currentPhase === 'main' && boxScatterProgress > 0.001) {
+        const scrollY = window.scrollY || 0;
+        let anchorX = width * 0.5;
+        let currentAnchorY = height - 165 - scrollY * 0.38;
+
+        if (heroSubPitchRef.current) {
+          const rect = heroSubPitchRef.current.getBoundingClientRect();
+          anchorX = rect.left + rect.width * 0.5;
+          currentAnchorY = rect.top + rect.height * 0.5;
+        }
+
+        for (let i = 0; i < boxParticles.length; i++) {
+          const bp = boxParticles[i];
+          if (boxScatterProgress >= 0.98) {
+            bp.phase += bp.phaseSpeed * dtScale;
+            // Clamped to [0, 0.96] to eliminate negative alpha flicker
+            bp.alpha = Math.max(0, Math.min(0.96, (0.22 + 0.34 * fastSin(bp.phase)) * boxScatterProgress));
+            bp.x += bp.vx * dtScale;
+            bp.y += bp.vy * dtScale;
+
+            if (bp.x < 4) bp.x += width - 8;
+            else if (bp.x > width - 4) bp.x -= width - 8;
+            if (bp.y < 4) bp.y += height - 8;
+            else if (bp.y > height - 4) bp.y -= height - 8;
+          } else {
+            const u = boxScatterProgress;
+            const burstDist = bp.burstSpeed * u * 155;
+            const wave = fastSin(bp.phase + now * 0.0028) * 14 * u;
+            bp.x = anchorX + bp.relX + Math.cos(bp.burstAngle) * burstDist + wave;
+            bp.y = currentAnchorY + bp.relY + Math.sin(bp.burstAngle) * burstDist - u * 95;
+            // Clamped to [0, 0.92] to eliminate negative alpha flicker
+            bp.alpha = Math.max(0, Math.min(0.92, u * 1.5) * (0.65 + 0.35 * fastSin(bp.phase + now * 0.0035)));
+            bp.vx = Math.cos(bp.driftAngle) * bp.driftSpeed;
+            bp.vy = Math.sin(bp.driftAngle) * bp.driftSpeed;
+          }
+
+          if (bp.alpha > 0.01) {
+            ctx.globalAlpha = bp.alpha;
+            const sprite = bp.bit === 0 ? sprite0Corner : sprite1Corner;
+            ctx.drawImage(
+              sprite,
+              (bp.x - halfCorner) | 0,
+              (bp.y - halfCorner) | 0,
+              cornerDim,
+              cornerDim
+            );
+          }
         }
       }
 
@@ -960,6 +1153,7 @@ export function SlopDepsCanvas() {
       >
         <section
           id="hero-sub-pitch"
+          ref={heroSubPitchRef}
           data-testid="hero-sub-pitch"
           className="w-full max-w-[640px] mx-auto flex flex-col items-center text-center pointer-events-auto mb-5"
         >
@@ -977,7 +1171,7 @@ export function SlopDepsCanvas() {
             onClick={() => void handleCopyHeroChip()}
             className="group inline-flex items-center gap-2.5 sm:gap-3 px-4 py-2.5 sm:px-5 sm:py-3 bg-[#080A0F] border-2 border-[#F5F5F0]/45 hover:border-[#F5F5F0] text-[#F5F5F0] font-terminal text-sm sm:text-base md:text-lg pixel-btn-anim cursor-pointer"
           >
-            <span>$ slopdeps</span>
+            <span>$ npm i -g slop-deps</span>
             <span
               aria-hidden="true"
               className="inline-block w-2 sm:w-2.5 h-3.5 sm:h-4 bg-[#F5F5F0] animate-pulse"

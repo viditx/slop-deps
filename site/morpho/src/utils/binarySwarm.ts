@@ -70,7 +70,7 @@ const TWO_PI = Math.PI * 2;
 /**
  * Fast parabolic sine approximation for shimmer phases (-1 to 1) to avoid thousands of Math.sin calls per frame on low-end CPUs.
  */
-function fastSin(rad: number): number {
+export function fastSin(rad: number): number {
   let x = rad % TWO_PI;
   if (x > Math.PI) x -= TWO_PI;
   else if (x < -Math.PI) x += TWO_PI;
@@ -340,7 +340,8 @@ export function stepBinarySwarm(
         p.bit = u > 0.55 ? p.cornerBit : p.heroBit;
 
         if (p.cornerAlpha <= 0.01) {
-          p.alpha = p.heroAlpha * (1 - u2);
+          // Excess core particle: keep alive and shimmer as it scatters outward into the void!
+          p.alpha = Math.max(0.18, p.heroAlpha * (1 - u * 0.45) * (0.65 + 0.35 * fastSin(p.phase + u * 6.28)));
         } else {
           p.alpha = 0.96;
         }
@@ -351,8 +352,30 @@ export function stepBinarySwarm(
     const isSettledInCorner = phase === 'main' && p.morphProgress >= 0.999;
     const activeTargetAlpha = isSettledInCorner ? p.cornerAlpha : p.targetAlpha;
 
-    // Fast skip for hidden excess core particles in corner mode
-    if (phase === 'main' && activeTargetAlpha <= 0.01) {
+    // Excess core particles settled in corner mode: DRIFT IN VOID as live starfield bits!
+    if (phase === 'main' && isSettledInCorner && p.cornerAlpha <= 0.01) {
+      if (Math.abs(p.vx) < 0.001 && Math.abs(p.vy) < 0.001) {
+        const angle = ((i * 137.5) % 360) * (Math.PI / 180);
+        const speed = 0.22 + ((i % 7) * 0.06);
+        p.vx = Math.cos(angle) * speed;
+        p.vy = Math.sin(angle) * speed;
+      }
+      // Note: p.phase is already incremented once at loop start. Clamped to [0, 0.96] to prevent negative alpha.
+      p.alpha = Math.max(0, Math.min(0.96, 0.22 + 0.32 * fastSin(p.phase)));
+      p.x += p.vx * dtScale;
+      p.y += p.vy * dtScale;
+
+      if (p.x < 4) p.x += width - 8;
+      else if (p.x > width - 4) p.x -= width - 8;
+      if (p.y < 4) p.y += height - 8;
+      else if (p.y > height - 4) p.y -= height - 8;
+
+      p.bit = p.heroBit;
+      continue;
+    }
+
+    // Fast skip for hidden particles
+    if (phase === 'main' && activeTargetAlpha <= 0.01 && !isSettledInCorner) {
       p.alpha = 0;
       continue;
     }
@@ -603,7 +626,9 @@ export function assignWordPairTargets(
   heroSlopPts: Point2D[],
   heroDepsPts: Point2D[],
   cornerSlopPts: Point2D[],
-  cornerDepsPts: Point2D[]
+  cornerDepsPts: Point2D[],
+  width: number = 1200,
+  height: number = 800
 ): void {
   const sortPts = (pts: Point2D[]) =>
     [...pts].sort((a, b) => (Math.abs(a.y - b.y) > 4 ? a.y - b.y : a.x - b.x));
@@ -692,6 +717,21 @@ export function assignWordPairTargets(
         p.cornerBit = cp.bit ?? 0;
         p.cornerAlpha = 0;
       } else {
+        // Disperse across the void so they swell the starfield
+        const angle = ((i * 137.5) % 360) * (Math.PI / 180);
+        const radius = 60 + ((i * 61) % 460);
+        const screenW = Math.max(100, width || 1200);
+        const screenH = Math.max(100, height || 800);
+        const boundW = Math.max(1, screenW - 40);
+        const boundH = Math.max(1, screenH - 40);
+        let scatterX = p.heroX + Math.cos(angle) * radius * 2.2;
+        let scatterY = p.heroY + Math.sin(angle) * radius * 1.6;
+        // Modulo wrapping prevents infinite loop hazard
+        scatterX = 20 + (((scatterX - 20) % boundW + boundW) % boundW);
+        scatterY = 20 + (((scatterY - 20) % boundH + boundH) % boundH);
+        p.cornerX = scatterX;
+        p.cornerY = scatterY;
+        p.cornerBit = i % 2 === 0 ? 0 : 1;
         p.cornerAlpha = 0;
       }
 
