@@ -4,7 +4,7 @@ import { spawnSync } from 'child_process';
 import { extractJsImports } from './extractors/js-ts.js';
 import { extractPythonImports } from './extractors/python.js';
 import { extractRustUses } from './extractors/rust.js';
-import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy, extractCargoToml } from './extractors/manifests.js';
+import { extractPackageJson, extractRequirementsTxt, extractPyProjectToml, extractSetupCfg, extractPipfile, extractSetupPy, extractCargoToml, extractDenoJson } from './extractors/manifests.js';
 import { isBuiltin, extendBuiltins } from './builtins.js';
 import { checkNpmPackage } from './registries/npm.js';
 import { checkPyPiPackage } from './registries/pypi.js';
@@ -34,7 +34,7 @@ const SUPPORTED_MANIFESTS = new Set([
   'pipfile', 'setup.py', 'cargo.toml', 'constraints.txt',
   'tsconfig.json', 'jsconfig.json',
   'build.gradle.kts', 'build.gradle', 'settings.gradle.kts', 'settings.gradle',
-  'libs.versions.toml', 'pom.xml'
+  'libs.versions.toml', 'pom.xml', 'deno.json', 'deno.jsonc'
 ]);
 
 function isSupportedFile(filename) {
@@ -293,6 +293,26 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
       if (!isStaged) continue;
       const rel = path.relative(targetDir, file);
       packageReferences.push(...extractCargoToml(content, rel));
+      continue;
+    }
+
+    if (basename === 'deno.json' || basename === 'deno.jsonc') {
+      const content = await safeReadFile(file);
+      if (content !== null) {
+        try {
+          const clean = content.replace(/^\uFEFF/, '').replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '$1');
+          const parsed = JSON.parse(clean);
+          if (parsed.name && typeof parsed.name === 'string') {
+            localWorkspacePackages.add(parsed.name.toLowerCase());
+            if (parsed.name.startsWith('@')) {
+              privateScopes.add(parsed.name.split('/')[0].toLowerCase());
+            }
+          }
+        } catch {}
+        if (!isStaged) continue;
+        const rel = path.relative(targetDir, file);
+        packageReferences.push(...extractDenoJson(content, rel));
+      }
       continue;
     }
 

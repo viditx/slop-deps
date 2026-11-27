@@ -1885,7 +1885,66 @@ fun main() {}
   }
   console.log('  ✔ PASS: exit code contract (0: clean, 1: findings, 2: strict failure / error) verified\n');
 
-  console.log('🎉 All 96 test assertions passed successfully!');
+  // Test 97: Deno and Bun manifest support (deno.json / deno.jsonc)
+  console.log('Test 97: Deno and Bun manifest support (deno.json / deno.jsonc)');
+  {
+    const { extractDenoJson } = await import('../src/extractors/manifests.js');
+    const os = await import('node:os');
+
+    // 1. Unit extraction: standard imports, scoped packages, and scopes mapping
+    const sampleDenoJsonc = `\uFEFF{
+      // Top-level imports
+      "imports": {
+        "express": "npm:express@^4.18.2",
+        "@types/node": "npm:@types/node@^20.0.0",
+        "local-mod": "./utils.ts",
+        "jsr-mod": "jsr:@std/path@0.218.0"
+      },
+      /* Multi-line comment block
+         covering internal project scopes */
+      "scopes": {
+        "./internal/": {
+          "chalk": "npm:chalk@5",
+          "@myorg/tool": "npm:@myorg/tool@1.0.0"
+        }
+      }
+    }`;
+
+    const extracted = extractDenoJson(sampleDenoJsonc, 'deno.jsonc');
+    assert.equal(extracted.length, 4, 'Should extract 4 npm dependencies from imports and scopes');
+
+    const names = extracted.map(e => e.name);
+    assert.ok(names.includes('express'), 'Must extract express');
+    assert.ok(names.includes('@types/node'), 'Must extract @types/node');
+    assert.ok(names.includes('chalk'), 'Must extract chalk');
+    assert.ok(names.includes('@myorg/tool'), 'Must extract @myorg/tool');
+    assert.ok(!names.includes('local-mod'), 'Must ignore relative specifiers');
+    assert.ok(!names.includes('jsr-mod'), 'Must ignore jsr specifiers');
+
+    for (const item of extracted) {
+      assert.equal(item.ecosystem, 'npm', 'Ecosystem must be npm');
+      assert.equal(item.file, 'deno.jsonc', 'File path must be preserved');
+    }
+
+    // 2. Integration with scanDirectory
+    const tempDenoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-deno-test-'));
+    fs.writeFileSync(path.join(tempDenoDir, 'deno.json'), JSON.stringify({
+      name: '@mycorp/app',
+      imports: {
+        'react': 'npm:react@18.2.0'
+      }
+    }, null, 2));
+
+    const scanRes = await scanDirectory(tempDenoDir, { allowConfig: false, offline: true });
+    const reactFinding = scanRes.findings.find(f => f.name === 'react');
+    assert.ok(reactFinding, 'Must identify react dependency in deno.json scan');
+    assert.equal(reactFinding.status, 'VERIFIED', 'React must be verified in local corpus');
+
+    fs.rmSync(tempDenoDir, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: Deno and Bun manifest support (deno.json / deno.jsonc) with comments and scopes verified\n');
+
+  console.log('🎉 All 97 test assertions passed successfully!');
 }
 
 run().catch((err) => {

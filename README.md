@@ -19,7 +19,7 @@ Windows standalone binary `slopdeps-installer.exe` is also available on [Release
 [![npm version](https://img.shields.io/npm/v/slop-deps?color=cb3837)](https://www.npmjs.com/package/slop-deps)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Dependencies: Zero](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
-[![Tests: 96 Passing](https://img.shields.io/badge/Tests-96%2F96%20PASS-brightgreen.svg)](test/run-tests.js)
+[![Tests: 97 Passing](https://img.shields.io/badge/Tests-97%2F97%20PASS-brightgreen.svg)](test/run-tests.js)
 [![Node.js: >=18](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
 ```text
@@ -49,13 +49,13 @@ The moment you run `npm install` or `pip install`:
 2. The payload runs in your shell, exfiltrating `.env` secrets or SSH keys.
 3. Traditional tools (`npm audit`, Snyk) only inspect dependencies *after* install scripts have already executed.
 
-`slop-deps` statically scans raw source files (`.js`, `.ts`, `.py`, `.rs`, `.kt`, `.gradle`) and manifests to catch hallucinations *before* anything touches your disk or package manager.
+`slop-deps` statically scans raw source files (`.js`, `.ts`, `.py`, `.rs`, `.kt`, `.gradle`) and manifests (`package.json`, `deno.json`, `deno.jsonc`, `requirements.txt`, `pyproject.toml`, `setup.cfg`, `Pipfile`, `Cargo.toml`) to catch hallucinations *before* anything touches your disk or package manager.
 
 ---
 
 ## How It Works
 
-- **Static Lexer:** Zero-dependency lexical parser for JS/TS, Python, Rust, Kotlin/Gradle, and manifests. Handles dynamic imports, static concatenation (`'a' + 'b'`), and type-only imports without compiler overhead.
+- **Static Lexer:** Zero-dependency lexical parser for JS/TS, Python, Rust, Kotlin/Gradle, Deno/Bun (`deno.json`, `deno.jsonc`), and manifests. Handles dynamic imports, static concatenation (`'a' + 'b'`), and type-only imports without compiler overhead.
 - **Bundled Popularity Corpus:** 4,179 ecosystem packages verified offline in sub-millisecond time with zero telemetry.
 - **Upstream Registry Probes:** Direct HTTPS checks to `npmjs.org`, `pypi.org`, `crates.io`, and Maven Central / Google Maven / Gradle Plugin Portal with local TTL disk caching.
 - **Offline Typosquat Engine:** Damerau-Levenshtein and homoglyph detection for lookalike attacks targeting popular dependencies (`reqeusts` -> `requests`).
@@ -105,6 +105,43 @@ slopdeps --strict
 | `0` | **Clean** | All imports verified to exist on registries or local corpus. |
 | `1` | **Findings** | At least one confirmed hallucinated/non-existent package detected. |
 | `2` | **Strict Failure / Error** | In `--strict` mode: at least one `UNKNOWN` probe/lexer result; or unhandled syntax/tool error. |
+
+---
+
+## CI/CD GitHub Actions Integration
+
+Block hallucinated packages in pull requests before they reach `main`. Add this 3-line step to `.github/workflows/security.yml`:
+
+```yaml
+name: Dependency Security Gate
+on: [push, pull_request]
+
+jobs:
+  verify-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Gate check against hallucinated packages
+        run: npx slop-deps --strict
+```
+
+---
+
+## FAQ: Deterministic Defense vs. System Prompting (The Prologic Defense)
+
+**Q: Why not just add "Do not invent fake packages" to the AI system prompt (`CLAUDE.md`, Cursor rules, custom instructions)?**
+
+**A:** System prompts are *probabilistic recommendations*, not deterministic gates. Large Language Models (LLMs) operate under token entropy: under complex multi-turn context compaction, deep refactoring requests, or high temperature, LLMs routinely ignore negative constraints ("hallucination drift").
+
+Furthermore, prompt instructions offer zero protection when:
+1. **Plausible Lookalikes:** An agent hallucinates a subtle variant of an existing package (e.g., `react-router-dom-v6` or `fastapi-cors`).
+2. **Copy-Pasting Developers:** A developer copies AI-generated snippets from ChatGPT, Claude, or DeepSeek web chat directly into their project without reading every import line.
+3. **Automated CI Gates:** Pre-commit hooks and CI pipelines need a machine-verifiable, deterministic fail-closed exit code (`exit 1` or `exit 2`), not fuzzy probabilities.
+
+`slop-deps` operates as an absolute compiler-level AST barrier. It doesn't ask the AI to be polite; it inspects actual AST imports and cross-references live registry indices and offline corpora before `npm install` or `pip install` can execute untrusted lifecycle scripts.
 
 ---
 

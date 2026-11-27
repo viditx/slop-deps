@@ -548,3 +548,46 @@ export function extractSetupPy(content, filePath = 'setup.py') {
   return packages;
 }
 
+export function extractDenoJson(content, filePath = 'deno.json') {
+  const packages = [];
+  const cleanContent = (content || '').replace(/^\uFEFF/, '').replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, '$1');
+  try {
+    const config = JSON.parse(cleanContent);
+    const extractFromMap = (mapObj) => {
+      if (!mapObj || typeof mapObj !== 'object') return;
+      for (const [alias, specifier] of Object.entries(mapObj)) {
+        if (typeof specifier === 'string' && specifier.startsWith('npm:')) {
+          let trimmed = specifier.slice(4).trim();
+          let targetPkg = null;
+          if (trimmed.startsWith('@')) {
+            const parts = trimmed.split('/');
+            if (parts.length >= 2) {
+              const pkgPart = parts[1].split('@')[0];
+              targetPkg = `${parts[0]}/${pkgPart}`;
+            }
+          } else {
+            targetPkg = trimmed.split('/')[0].split('@')[0];
+          }
+          if (targetPkg) {
+            packages.push({
+              name: targetPkg,
+              version: specifier,
+              ecosystem: 'npm',
+              file: filePath
+            });
+          }
+        }
+      }
+    };
+
+    extractFromMap(config.imports);
+    if (config.scopes && typeof config.scopes === 'object') {
+      for (const scopeMap of Object.values(config.scopes)) {
+        extractFromMap(scopeMap);
+      }
+    }
+  } catch {}
+
+  return packages;
+}
+
