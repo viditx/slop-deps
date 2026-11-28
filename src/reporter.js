@@ -14,7 +14,7 @@ const c = isColorSupported
   : Object.fromEntries(Object.keys(RAW).map(k => [k, '']));
 
 export function printBanner() {
-  console.log(`${c.dim}slop-deps v0.0.4${c.reset}\n`);
+  console.log(`${c.dim}slop-deps v0.0.5${c.reset}\n`);
 }
 
 export function printResults(findings, stats) {
@@ -40,7 +40,11 @@ export function printResults(findings, stats) {
       console.log(`  ${c.bold}${loc}${c.reset}`);
 
       if (item.risk === 'CRITICAL') {
-        console.log(`    ${prefix}: package '${c.bold}${item.name}${c.reset}' does not exist on ${item.ecosystem}\n`);
+        if (item.type === 'secret') {
+          console.log(`    ${prefix}: leaked credential \x1b[1m${item.name}\x1b[0m${item.raw ? ` (${item.raw})` : ''} — ${item.message}\n`);
+        } else {
+          console.log(`    ${prefix}: package '${c.bold}${item.name}${c.reset}' does not exist on ${item.ecosystem}\n`);
+        }
       } else {
         const detail = item.message || (item.suggestion ? `looks like typosquat of '${item.suggestion}'` : 'unverified package');
         console.log(`    ${prefix}: ${item.name} (${item.ecosystem}) - ${detail}\n`);

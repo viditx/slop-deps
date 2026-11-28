@@ -7,8 +7,9 @@ import { printBanner, printResults, printUserWarning } from '../src/reporter.js'
 import { updateAgentSystemInstructions } from '../src/agent-guard.js';
 import { toSarif } from '../src/sarif.js';
 import { updateCorpus } from '../src/update-corpus.js';
+import { profileFromChoice, applyProfile } from '../src/profiles.js';
 
-const VERSION = '0.0.4';
+const VERSION = '0.0.5';
 
 const FIX_SYSTEM = `You fix broken package imports in source code. The scanner found imports referencing packages that do not exist on the registry (AI hallucinations) or that typosquat popular packages. For each finding, return the corrected import line: keep the language, style and named bindings identical, only change the package specifier to the real package the code clearly intended. If no real package plausibly matches, set "new" to null. Respond ONLY with a JSON array, no prose, no code fences.`;
 
@@ -25,10 +26,13 @@ USAGE:
 
 COMMANDS:
   check <name>        Verify a single package name against registry before install
-  init                Install zero-dependency .git/hooks/pre-commit security gate
+  init                Interactive setup wizard: pick a scanning profile, install the
+                      zero-dependency .git/hooks/pre-commit security gate, save profile
+                      to .slopdepsrc.json
 
 OPTIONS:
   -d, --dir <path>    Specify directory to scan (default: current working directory)
+  --profile <name>    init only, non-interactive: lean | full | custom (default: lean)
   --staged            Scan only files staged in git (pre-commit mode)
   --offline           Privacy mode: bundled corpus + local cache only, zero network
   --private           Alias for --offline
@@ -95,6 +99,54 @@ if (args[0] !== 'init' && args[0] !== 'check') {
   }
 }
 
+function getProfileFlag() {
+  const eq = args.find(a => a.startsWith('--profile='));
+  if (eq) return eq.slice('--profile='.length).trim().toLowerCase();
+  const idx = args.indexOf('--profile');
+  if (idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith('-')) return args[idx + 1].trim().toLowerCase();
+  return null;
+}
+
+async function runProfileWizard() {
+  const readline = await import('node:readline/promises');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  console.log(`
+  Choose a scanning profile for this repository:
+
+  \x1b[1m[1]\x1b[0m Lean & Fast         Dependencies only
+  \x1b[1m[2]\x1b[0m Full Sentinel Suite Dependencies + Code Slop + Secrets
+  \x1b[1m[3]\x1b[0m Custom Config       Pick modules individually
+`);
+  let choice = '1';
+  try {
+    choice = ((await rl.question('  Select profile [1-3] (default 1): ')) || '1').trim();
+  } catch {
+    choice = '1';
+  }
+
+  let profile;
+  if (choice === '3') {
+    const ask = async (label, def) => {
+      const raw = ((await rl.question(`  ${label} [y/n] (default ${def ? 'y' : 'n'}): `)) || '').trim().toLowerCase();
+      if (!raw) return def;
+      return raw.startsWith('y');
+    };
+    profile = profileFromChoice('3', {
+      dependencies: await ask('Scan dependencies for hallucinations & typosquats', true),
+      codeSlop: await ask('Scan code for AI placeholder slop (TODO, ...rest of code, debugger, NotImplementedError)', true),
+      secrets: await ask('Scan for leaked API keys & secrets (OpenAI, Anthropic, GitHub, AWS, Stripe)', false)
+    });
+    if (!profile.scan.dependencies && !profile.scan.codeSlop && !profile.scan.secrets) {
+      console.log('  \x1b[33m•\x1b[0m Nothing selected — keeping dependency scanning enabled.');
+      profile = profileFromChoice('3', { dependencies: true, codeSlop: false, secrets: false });
+    }
+  } else {
+    profile = profileFromChoice(choice === '2' ? '2' : '1');
+  }
+  rl.close();
+  return profile;
+}
+
 async function run() {
   if (args[0] === 'init') {
     const fs = await import('fs');
@@ -103,6 +155,24 @@ async function run() {
       console.error('\x1b[31m✖ ERROR:\x1b[0m No .git repository found in current directory. Run this inside your git repo.\n');
       process.exit(2);
     }
+
+    // Profile selection: --profile flag for scripting, interactive wizard on a
+    // TTY, lean default otherwise (keeps CI/non-interactive runs deterministic).
+    const profileFlag = getProfileFlag();
+    let profile;
+    if (profileFlag) {
+      profile = profileFlag === 'full'
+        ? profileFromChoice('2')
+        : profileFlag === 'custom'
+          ? profileFromChoice('3')
+          : profileFromChoice('1');
+    } else if (process.stdin.isTTY) {
+      profile = await runProfileWizard();
+    } else {
+      profile = profileFromChoice('1');
+      console.log('  \x1b[33m•\x1b[0m Non-interactive session: defaulting to \x1b[1mLean & Fast\x1b[0m (dependencies only). Re-run in a terminal to pick a profile.');
+    }
+
     const hooksDir = path.join(gitDir, 'hooks');
     if (!fs.existsSync(hooksDir)) {
       fs.mkdirSync(hooksDir, { recursive: true });
@@ -111,6 +181,20 @@ async function run() {
     const hookScript = `#!/bin/sh\n# slop-deps pre-commit security gate against hallucinated packages\nnpx slop-deps --staged --strict\n`;
     fs.writeFileSync(preCommitHook, hookScript, { mode: 0o755 });
     console.log('  \x1b[32m✔\x1b[0m Installed git pre-commit hook at .git/hooks/pre-commit');
+
+    const rcPath = path.join(process.cwd(), '.slopdepsrc.json');
+    let existingRc = {};
+    try {
+      existingRc = JSON.parse(fs.readFileSync(rcPath, 'utf-8'));
+    } catch {}
+    const mergedRc = applyProfile(existingRc, profile);
+    fs.writeFileSync(rcPath, JSON.stringify(mergedRc, null, 2) + '\n');
+    const enabledModules = [
+      mergedRc.scan.dependencies ? 'dependencies' : null,
+      mergedRc.scan.codeSlop ? 'code slop' : null,
+      mergedRc.scan.secrets ? 'secrets' : null
+    ].filter(Boolean).join(' + ');
+    console.log(`  \x1b[32m✔\x1b[0m Profile \x1b[1m${mergedRc.profile}\x1b[0m saved to .slopdepsrc.json (scanning: ${enabledModules})`);
 
     const guardRes = updateAgentSystemInstructions(process.cwd(), []);
     if (guardRes.success) {
@@ -206,8 +290,8 @@ async function run() {
   let result;
   try {
     result = isStaged
-      ? await scanStagedFiles(targetDir, { offline: isOffline, allowConfig: args.includes('--trust-config') })
-      : await scanDirectory(targetDir, { offline: isOffline, allowConfig: args.includes('--trust-config') });
+      ? await scanStagedFiles(targetDir, { offline: isOffline, allowConfig: args.includes('--trust-config'), loadSentinelProfile: true })
+      : await scanDirectory(targetDir, { offline: isOffline, allowConfig: args.includes('--trust-config'), loadSentinelProfile: true });
   } catch (err) {
     if (!isJson && !isSarif) {
       process.stdout.write('\x1b[2K\r');
@@ -229,7 +313,8 @@ async function run() {
   }
 
   // AI Agent & User Warning Condition: Blocked packages update SYSTEM.md and alert user
-  const criticalPackages = findings.filter(f => f.risk === 'CRITICAL' || f.status === 'HALLUCINATED');
+  // Sentinel findings (secrets/code slop) print their own dedicated alerts.
+  const criticalPackages = findings.filter(f => (f.risk === 'CRITICAL' || f.status === 'HALLUCINATED') && !f.type);
   if (criticalPackages.length > 0) {
     const guardRes = updateAgentSystemInstructions(targetDir, criticalPackages);
     if (!isJson && !isSarif) {

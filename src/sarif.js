@@ -10,10 +10,14 @@ const RISK_TO_LEVEL = {
 const RULES = [
   { id: 'SD001', short: 'hallucinatedPackage', level: 'error', text: 'Referenced package does not exist on the registry. An attacker can register it and ship malware.' },
   { id: 'SD002', short: 'typosquatRisk', level: 'warning', text: 'Package name closely imitates a hugely popular package, or shows other supply-chain risk signals.' },
-  { id: 'SD003', short: 'unresolved', level: 'note', text: 'Package could not be verified (network error or invalid specifier).' }
+  { id: 'SD003', short: 'unresolved', level: 'note', text: 'Package could not be verified (network error or invalid specifier).' },
+  { id: 'SD004', short: 'codeSlop', level: 'note', text: 'AI placeholder or unimplemented stub committed (TODO, truncated body, debugger, NotImplementedError).' },
+  { id: 'SD005', short: 'leakedSecret', level: 'error', text: 'Potential live API credential committed to source control. Rotate it immediately.' }
 ];
 
 function ruleFor(finding) {
+  if (finding.type === 'secret') return RULES[4];
+  if (finding.type === 'code-slop') return RULES[3];
   if (finding.risk === 'CRITICAL') return RULES[0];
   if (finding.risk === 'HIGH') return RULES[1];
   return RULES[2];
@@ -60,7 +64,7 @@ export function toSarif(findings) {
           driver: {
             name: 'slop-deps',
             informationUri: 'https://github.com/viditx/slop-deps',
-            version: '0.0.4',
+            version: '0.0.5',
             rules: RULES.filter(r => usedRules.has(r.id)).map(r => ({
               id: r.id,
               shortDescription: { text: r.short },

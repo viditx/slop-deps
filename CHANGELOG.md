@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-11-28
+
+### Added
+- **Code Slop Extractor (`src/extractors/code-slop.js`)**:
+  - Fast single-pass lexer + regex detection of AI placeholders committed to source: `// TODO`, `// ...rest of code`, `pass  # TODO`, `raise NotImplementedError`, and `debugger;`.
+  - String literals, URLs, template text, and docstrings are lexed out, so TODO markers in prose never produce false positives. Works across JS/TS/JSX/TSX, Rust, Kotlin/Gradle (C-style comments) and Python (triple-quote aware).
+- **Secrets Scanner (`src/extractors/secrets.js`)**:
+  - Zero-dependency leaked-credential scanner for OpenAI (`sk-`/`sk-proj-`), Anthropic (`sk-ant-`), GitHub classic & fine-grained PATs (`ghp_`, `github_pat_`), AWS access key IDs (`AKIA`/`ASIA`), AWS secret access keys, and Stripe secret keys (`sk_live_`/`sk_test_`).
+  - Generic high-entropy credential catch via Shannon entropy with placeholder filtering (`your-key-here`, AWS docs examples, `xxx` filler, low-entropy junk all rejected).
+  - Findings carry a 4-char masked preview only — raw secrets never leave the scanner or appear in JSON/SARIF/terminal output. Leaks are CRITICAL (exit 1, exit 2 under `--strict`).
+- **Interactive `init` Setup Wizard**:
+  - `slopdeps init` now asks the user to choose a scanning profile via `node:readline/promises`: `[1] Lean & Fast` (dependencies only), `[2] Full Sentinel Suite` (dependencies + code slop + secrets), `[3] Custom Config` (per-module toggles).
+  - Profile persists to `.slopdepsrc.json` (`profile` + `scan` keys), merging safely into existing rc files (builtins, popular, map, privateScopes all preserved).
+  - Non-interactive/CI sessions default to `lean`; `--profile lean|full|custom` overrides for scripting. Custom profiles can disable dependency scanning for secrets-only audits.
+- **SARIF Rules SD004/SD005**:
+  - `codeSlop` (note) and `leakedSecret` (error) rules mapped for GitHub Code Scanning.
+- **Expanded Test Suite**:
+  - Tests 100–103 validating code slop extraction (line-accurate, string-safe), secret detection across all providers with redaction guarantees, profile-gated sentinel integration via `scanDirectory` (full/lean/custom/`allowConfig:false`), and init wizard profile persistence with rc merge. Adversarial fuzz corpus now covers both new extractors (103/103 tests pass).
+
+### Changed
+- Bumped version string to `0.0.5` across CLI banner, `--version`, SARIF driver, and registry User-Agents.
+
 ## [0.0.4] - 2026-11-27
 
 ### Added

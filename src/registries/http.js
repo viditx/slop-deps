@@ -2,7 +2,7 @@
 // Features: bounded concurrency (<=8), stable User-Agent, exponential backoff
 // on 429/5xx, Retry-After compliance, request timeouts, and wall-time caps.
 
-export const USER_AGENT = 'slop-deps/0.0.4';
+export const USER_AGENT = 'slop-deps/0.0.5';
 
 const MAX_CONCURRENCY = 8;
 let activeRequests = 0;

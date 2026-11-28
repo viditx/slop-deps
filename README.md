@@ -63,6 +63,22 @@ The moment you run `npm install` or `pip install`:
 
 ---
 
+## Sentinel Profiles (Code Slop & Secrets)
+
+`slopdeps init` asks you to pick a scanning profile, persisted to `.slopdepsrc.json`:
+
+| Profile | Modules |
+|:---|:---|
+| `lean` (default) | Dependencies only |
+| `full` — Full Sentinel Suite | Dependencies + Code Slop + Secrets |
+| `custom` | Pick modules individually |
+
+- **Code Slop Scanner** flags AI placeholders committed to source: `// TODO`, `// ...rest of code`, `pass  # TODO`, `raise NotImplementedError`, and stray `debugger;` statements. A single-pass lexer keeps string literals, URLs, and template text out of the results.
+- **Secrets Scanner** catches leaked credentials (OpenAI `sk-`, Anthropic `sk-ant-`, GitHub `ghp_` / `github_pat_`, AWS `AKIA`/`ASIA`, Stripe `sk_live_`) plus generic high-entropy key material via Shannon entropy — including `.env` files. Findings carry a masked preview only; raw secrets never appear in output. Leaks exit code 1 (critical).
+- Scanning runs with `scan` flags in `.slopdepsrc.json`, e.g. `{ "profile": "full", "scan": { "dependencies": true, "codeSlop": true, "secrets": true } }`. Code slop and secrets toggles apply automatically to CLI and pre-commit scans (additive local analysis); the `dependencies: false` downgrade requires `--trust-config`, since it can hide hallucinated imports.
+
+---
+
 ## CLI Reference
 
 ```bash
@@ -74,7 +90,9 @@ slopdeps check express
 slopdeps check fake-jwt-decoder --json
 
 # Install zero-dependency git pre-commit hook (blocks agent/human hallucinated commits)
+# Interactive wizard: pick Lean & Fast / Full Sentinel Suite / Custom Config
 slopdeps init
+slopdeps init --profile full   # non-interactive alternative
 
 # Scan only git-staged files (fast pre-commit)
 slopdeps --staged
@@ -94,7 +112,7 @@ slopdeps --strict
 | Command / Flag | Purpose |
 |:---|:---|
 | `check <name>` | Verify a single package name against registries before running `install`. |
-| `init` | Install zero-dependency `.git/hooks/pre-commit` hook to automatically gate commits. |
+| `init` | Interactive setup wizard: choose a scanning profile, install the zero-dependency `.git/hooks/pre-commit` hook, save the profile to `.slopdepsrc.json`. Accepts `--profile lean\\|full\\|custom` for non-interactive use. |
 | `-d, --dir <path>` | Target directory to scan (default: cwd). |
 | `--staged` | Pre-commit mode: only scans git-staged files. |
 | `--offline` | Air-gapped verification via local corpus + cache (zero network calls). |

@@ -1,7 +1,7 @@
 {
   "name": "slop-deps",
-  "version": "0.0.4",
-  "description": "Fast, zero-dependency scanner for unverified package imports and AI-generated hallucinations across npm, PyPI, Crates.io, and Maven/Gradle.",
+  "version": "0.0.5",
+  "description": "Fast, zero-dependency scanner for unverified package imports, AI-generated hallucinations, code slop, and leaked API keys across npm, PyPI, Crates.io, and Maven/Gradle.",
   "main": "src/index.js",
   "type": "module",
   "bin": {
@@ -28,7 +28,9 @@
     "maven",
     "scanner",
     "linter",
-    "anti-slop"
+    "anti-slop",
+    "secrets-detection",
+    "code-slop"
   ],
   "author": "Vidit Patil <viditx@users.noreply.github.com>",
   "license": "MIT",

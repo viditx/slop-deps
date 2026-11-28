@@ -323,7 +323,7 @@ async function run() {
 
   const vResult = spawnSync(process.execPath, [binPath, '--version'], { encoding: 'utf-8' });
   assert.equal(vResult.status, 0, '--version must exit 0');
-  assert.ok(vResult.stdout.includes('0.0.4'), '--version must output version');
+  assert.ok(vResult.stdout.includes('0.0.5'), '--version must output version');
 
   const invResult = spawnSync(process.execPath, [binPath, '--unknown-flag'], { encoding: 'utf-8' });
   assert.equal(invResult.status, 2, 'Unrecognized option must exit 2');
@@ -1771,6 +1771,8 @@ fun main() {}
     const { extractRustUses } = await import('../src/extractors/rust.js');
     const { extractGradleDependencies } = await import('../src/extractors/kotlin.js');
     const { extractPackageJson, extractPyProjectToml, extractCargoToml } = await import('../src/extractors/manifests.js');
+    const { extractCodeSlop } = await import('../src/extractors/code-slop.js');
+    const { scanSecrets } = await import('../src/extractors/secrets.js');
 
     const adversarialSeeds = [
       '',
@@ -1803,6 +1805,9 @@ fun main() {}
       assert.ok(Array.isArray(extractPackageJson(seed, 'fuzz.json')), 'package.json extractor must return array');
       assert.ok(Array.isArray(extractPyProjectToml(seed, 'fuzz.toml')), 'pyproject.toml extractor must return array');
       assert.ok(Array.isArray(extractCargoToml(seed, 'fuzz.toml')), 'Cargo.toml extractor must return array');
+      assert.ok(Array.isArray(extractCodeSlop(seed, 'fuzz.js')), 'code slop extractor must return array');
+      assert.ok(Array.isArray(extractCodeSlop(seed, 'fuzz.py')), 'code slop extractor (python mode) must return array');
+      assert.ok(Array.isArray(scanSecrets(seed, 'fuzz.js')), 'secrets scanner must return array');
     }
   }
   console.log('  ✔ PASS: adversarial inputs fuzzed with bounded runtime and zero crashes\n');
@@ -2032,7 +2037,256 @@ fun main() {}
   }
   console.log('  ✔ PASS: AI agent SYSTEM.md instructions auto-updated and user warned\n');
 
-  console.log('🎉 All 99 test assertions passed successfully!');
+  // Test 100: Code slop extractor — AI placeholder detection
+  console.log('Test 100: Code slop extractor (AI placeholders)');
+  {
+    const { extractCodeSlop } = await import('../src/extractors/code-slop.js');
+
+    const jsSample = [
+      'const config = loadConfig();',
+      '// TODO: wire up the auth service',
+      '// ...rest of code',
+      'function main() {',
+      '  debugger;',
+      '}',
+      'const doc = "TODO inside a string must never match";',
+      'const url = "https://example.com/#TODO-anchor";',
+      '// a normal explanatory comment'
+    ].join('\n');
+    const jsSlop = extractCodeSlop(jsSample, 'sloppy.js');
+    assert.equal(jsSlop.length, 3, `Expected exactly 3 slop findings in JS sample, got ${jsSlop.length}`);
+    assert.ok(jsSlop.some(f => f.name === 'todo-comment' && f.line === 2), 'TODO comment must be detected at line 2');
+    assert.ok(jsSlop.some(f => f.name === 'ellipsis-placeholder' && f.line === 3), 'ellipsis placeholder must be detected at line 3');
+    assert.ok(jsSlop.some(f => f.name === 'debugger' && f.line === 5), 'debugger statement must be detected at line 5');
+    assert.ok(jsSlop.every(f => f.risk === 'WARN' && f.type === 'code-slop' && f.ecosystem === 'code-slop'), 'slop findings carry WARN risk and code-slop type');
+    assert.ok(jsSlop.every(f => typeof f.raw === 'string' && f.message), 'slop findings carry a raw snippet and message');
+
+    const pySample = [
+      'import requests',
+      '',
+      'def handler(event, context):',
+      '    pass  # TODO: implement rate limiting',
+      '',
+      'def billing(month):',
+      '    raise NotImplementedError("per-seat billing comes later")',
+      '',
+      '# ...remaining implementation omitted'
+    ].join('\n');
+    const pySlop = extractCodeSlop(pySample, 'sloppy.py');
+    assert.ok(pySlop.some(f => f.name === 'pass-stub' && f.line === 4), 'pass + TODO must be detected as pass-stub at line 4');
+    assert.ok(pySlop.some(f => f.name === 'not-implemented' && f.line === 7), 'raise NotImplementedError must be detected at line 7');
+    assert.ok(pySlop.some(f => f.name === 'ellipsis-placeholder' && f.line === 9), 'python ellipsis comment must be detected at line 9');
+    assert.equal(pySlop.filter(f => f.name === 'todo-comment').length, 0, 'pass-stub must suppress duplicate todo-comment on the same line');
+    assert.equal(pySlop.length, 3, `Expected exactly 3 slop findings in Python sample, got ${pySlop.length}`);
+
+    const cleanJs = [
+      'const fast = require("fastify");',
+      '/* Multi-line doc comment',
+      ' * describing legit behavior */',
+      'const tpl = `see // TODO docs inside template`;',
+      'function clean() { return 42; }'
+    ].join('\n');
+    assert.equal(extractCodeSlop(cleanJs, 'clean.js').length, 0, 'clean JS (doc comments, template text) must yield no slop');
+    assert.equal(extractCodeSlop('import json\n\ndef clean():\n    return 42\n', 'clean.py').length, 0, 'clean Python must yield no slop');
+    assert.equal(extractCodeSlop('', 'empty.js').length, 0, 'empty input must yield no slop');
+  }
+  console.log('  ✔ PASS: TODO, ...rest of code, pass # TODO, NotImplementedError, debugger detected; strings and doc comments ignored\n');
+
+  // Test 101: Secrets scanner — leaked API key detection
+  console.log('Test 101: Secrets scanner (leaked API keys)');
+  {
+    const { scanSecrets } = await import('../src/extractors/secrets.js');
+
+    const leakFile = [
+      "const OPENAI_KEY = 'sk-proj-AbCdEfGhIjKlMnOpQrStUv1234567890';",
+      "ANTHROPIC_TOKEN=sk-ant-api03-Zx9Qm4Kp2Rw8TvB5Ny7Cd3Fh6Ls1Mw00",
+      "github: ghp_Abcdef1234567890Abcdef12345678901234",
+      "token: github_pat_11AbCdEfGhIjKlMnOpQrSt_0123456789abcdefghijklmnopqrstuvwxyz",
+      "aws_key = AKIAQW7RFTGN3KDLMX82",
+      "stripe = 'sk_live_51H7xQwErTyUiOpAsDfGh'",
+      "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYRANDOMKEY99",
+      "const password = 'Zx9Qm4Kp2Rw8TvB5Ny7Cd3Fh6Ls1Mw';",
+      "const placeholder = 'sk-your-api-key-here-placeholder-000';",
+      "const docs = 'AKIAIOSFODNN7EXAMPLE is the canonical AWS docs key';",
+      "const publishable = 'pk_test_51H7xQwErTyUiOpAsDfGh';",
+      "const weak = 'changeme';"
+    ].join('\n');
+    const leaks = scanSecrets(leakFile, 'leaky.config');
+    const ids = new Set(leaks.map(f => f.name));
+    assert.ok(ids.has('openai-api-key'), 'OpenAI sk- key must be detected');
+    assert.ok(ids.has('anthropic-api-key'), 'Anthropic sk-ant- key must be detected');
+    assert.ok(ids.has('github-classic-pat'), 'GitHub classic PAT must be detected');
+    assert.ok(ids.has('github-fine-grained-pat'), 'GitHub fine-grained PAT must be detected');
+    assert.ok(ids.has('aws-access-key-id'), 'AWS access key ID must be detected');
+    assert.ok(ids.has('stripe-secret-key'), 'Stripe secret key must be detected');
+    assert.ok(ids.has('aws-secret-access-key'), 'AWS secret access key (context) must be detected');
+    assert.ok(ids.has('generic-secret'), 'high-entropy generic credential must be detected');
+    assert.equal(leaks.length, 8, `Expected exactly 8 leaks, got ${leaks.length}`);
+    assert.ok(leaks.some(f => f.name === 'openai-api-key' && f.line === 1), 'openai leak line number must be exact');
+    assert.ok(leaks.some(f => f.name === 'aws-access-key-id' && f.line === 5), 'aws leak line number must be exact');
+    assert.ok(leaks.every(f => f.risk === 'CRITICAL' && f.type === 'secret' && f.status === 'LEAK'), 'secret findings are CRITICAL type=secret status=LEAK');
+    assert.ok(leaks.every(f => !/[A-Za-z0-9]{16}/.test(f.raw)), 'raw field must never carry the full secret');
+    assert.ok(leaks.every(f => f.message.includes('Rotate')), 'secret findings must demand rotation');
+
+    assert.equal(scanSecrets('const x = 1;\nconst healthy = true;\n', 'clean.js').length, 0, 'clean source must yield no leaks');
+    assert.equal(scanSecrets('', 'empty.env').length, 0, 'empty input must yield no leaks');
+  }
+  console.log('  ✔ PASS: OpenAI/Anthropic/GitHub/AWS/Stripe keys detected; placeholders, publishable keys and weak values ignored; raw secrets never leave the scanner\n');
+
+  // Test 102: Sentinel suite integration via .slopdepsrc.json profile
+  console.log('Test 102: Sentinel suite integration (.slopdepsrc.json profiles)');
+  {
+    const os = await import('node:os');
+    const secretValue = 'sk-abcdefghijklmnop9876543210';
+
+    // 1. Full sentinel profile: deps + slop + secrets
+    const fullDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-sentinel-full-'));
+    fs.writeFileSync(path.join(fullDir, '.slopdepsrc.json'), JSON.stringify({
+      profile: 'full',
+      scan: { dependencies: true, codeSlop: true, secrets: true }
+    }));
+    fs.writeFileSync(path.join(fullDir, 'app.js'), "import _ from 'react';\n// TODO: strip debug hooks\ndebugger;\n");
+    fs.writeFileSync(path.join(fullDir, '.env'), `OPENAI_API_KEY=${secretValue}\n`);
+    try {
+      const fullScan = await scanDirectory(fullDir, { offline: true });
+      const fullNames = new Set(fullScan.findings.map(f => f.name));
+      assert.ok(fullNames.has('react'), 'dependency scan still runs under full profile');
+      assert.equal(fullScan.findings.find(f => f.name === 'react')?.status, 'VERIFIED', 'react verified via corpus offline');
+      assert.ok(fullNames.has('todo-comment') && fullNames.has('debugger'), 'code slop findings surfaced');
+      assert.ok(fullNames.has('openai-api-key'), '.env secret leak surfaced');
+      assert.equal(fullScan.findings.filter(f => f.type === 'code-slop').length, 2, 'exactly two slop findings');
+      assert.equal(fullScan.findings.filter(f => f.type === 'secret').length, 1, 'exactly one secret finding');
+      assert.equal(fullScan.stats.critical, 1, 'secret counts as critical');
+      const fullJson = JSON.stringify(fullScan);
+      assert.ok(!fullJson.includes(secretValue), 'raw secret must never appear in scan output');
+    } finally {
+      fs.rmSync(fullDir, { recursive: true, force: true });
+    }
+
+    // 2. Lean profile disables sentinel modules
+    const leanDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-sentinel-lean-'));
+    fs.writeFileSync(path.join(leanDir, '.slopdepsrc.json'), JSON.stringify({
+      profile: 'lean',
+      scan: { dependencies: true, codeSlop: false, secrets: false }
+    }));
+    fs.writeFileSync(path.join(leanDir, 'app.js'), "// TODO: strip debug hooks\ndebugger;\n");
+    fs.writeFileSync(path.join(leanDir, '.env'), `OPENAI_API_KEY=${secretValue}\n`);
+    try {
+      const leanScan = await scanDirectory(leanDir, { offline: true });
+      assert.ok(!leanScan.findings.some(f => f.type === 'code-slop' || f.type === 'secret'), 'lean profile must not scan sentinels');
+    } finally {
+      fs.rmSync(leanDir, { recursive: true, force: true });
+    }
+
+    // 3. allowConfig:false ignores rc sentinel configuration entirely
+    const fullDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-sentinel-norc-'));
+    fs.writeFileSync(path.join(fullDir2, '.slopdepsrc.json'), JSON.stringify({
+      profile: 'full',
+      scan: { dependencies: true, codeSlop: true, secrets: true }
+    }));
+    fs.writeFileSync(path.join(fullDir2, 'app.js'), "// TODO: strip debug hooks\ndebugger;\n");
+    try {
+      const noRcScan = await scanDirectory(fullDir2, { offline: true, allowConfig: false });
+      assert.ok(!noRcScan.findings.some(f => f.type === 'code-slop' || f.type === 'secret'), 'allowConfig:false must skip sentinel scanning');
+    } finally {
+      fs.rmSync(fullDir2, { recursive: true, force: true });
+    }
+
+    // 4. Custom secrets-only profile: dependency extraction skipped
+    const customDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-sentinel-custom-'));
+    fs.writeFileSync(path.join(customDir, '.slopdepsrc.json'), JSON.stringify({
+      profile: 'custom',
+      scan: { dependencies: false, codeSlop: false, secrets: true }
+    }));
+    fs.writeFileSync(path.join(customDir, 'app.js'), `const K = '${secretValue}';\ndebugger;\n`);
+    try {
+      const customScan = await scanDirectory(customDir, { offline: true });
+      assert.ok(!customScan.findings.some(f => f.ecosystem === 'npm'), 'dependencies:false must skip package scanning');
+      assert.ok(customScan.findings.some(f => f.type === 'secret'), 'secrets-only custom profile still scans secrets');
+      assert.ok(!customScan.findings.some(f => f.type === 'code-slop'), 'code slop disabled in this custom profile');
+    } finally {
+      fs.rmSync(customDir, { recursive: true, force: true });
+    }
+
+    // 5. CLI applies the init'd sentinel profile without --trust-config (additive
+    //    local scanning), while leaked secrets escalate to exit code 1.
+    const cliDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-sentinel-cli-'));
+    fs.writeFileSync(path.join(cliDir, '.slopdepsrc.json'), JSON.stringify({
+      profile: 'full',
+      scan: { dependencies: true, codeSlop: true, secrets: true }
+    }));
+    fs.writeFileSync(path.join(cliDir, 'app.js'), "// TODO: strip debug hooks\ndebugger;\n");
+    fs.writeFileSync(path.join(cliDir, '.env'), `STRIPE_KEY=sk_live_51H7xQwErTyUiOpAsDfGh\n`);
+    try {
+      const cliRun = spawnSync(process.execPath, [path.resolve('bin/slop-deps.js'), '--offline', cliDir], { encoding: 'utf-8' });
+      assert.equal(cliRun.status, 1, 'CLI scan with leaked secret must exit 1');
+      assert.ok(cliRun.stdout.includes('todo-comment'), 'CLI must surface code slop findings');
+      assert.ok(cliRun.stdout.includes('openai-api-key') || cliRun.stdout.includes('stripe-secret-key'), 'CLI must surface the leaked credential');
+      assert.ok(!cliRun.stdout.includes('sk_live_51H7xQwErTyUiOpAsDfGh'), 'CLI output must never print the raw secret');
+    } finally {
+      fs.rmSync(cliDir, { recursive: true, force: true });
+    }
+  }
+  console.log('  ✔ PASS: full/lean/custom profiles gate sentinel passes, secrets redacted, deps toggled cleanly\n');
+
+  // Test 103: init profile wizard & .slopdepsrc.json profiles
+  console.log('Test 103: init profile wizard & .slopdepsrc.json profiles');
+  {
+    const os = await import('node:os');
+    const { profileFromChoice, applyProfile } = await import('../src/profiles.js');
+    const binPath = path.resolve('bin/slop-deps.js');
+
+    const lean = profileFromChoice('1');
+    assert.equal(lean.profile, 'lean', 'choice 1 is lean');
+    assert.ok(lean.scan.dependencies && !lean.scan.codeSlop && !lean.scan.secrets, 'lean scans dependencies only');
+
+    const full = profileFromChoice('2');
+    assert.equal(full.profile, 'full', 'choice 2 is full');
+    assert.ok(full.scan.dependencies && full.scan.codeSlop && full.scan.secrets, 'full sentinel suite enables all modules');
+
+    const custom = profileFromChoice('3', { dependencies: true, codeSlop: true, secrets: false });
+    assert.equal(custom.profile, 'custom', 'choice 3 is custom');
+    assert.ok(custom.scan.dependencies && custom.scan.codeSlop && !custom.scan.secrets, 'custom answers map to module toggles');
+    assert.equal(profileFromChoice('bogus'), null, 'invalid choice returns null');
+
+    const merged = applyProfile({ builtins: { npm: ['acme-internal'] }, privateScopes: ['@acme'] }, full);
+    assert.equal(merged.profile, 'full', 'profile applied');
+    assert.ok(merged.scan?.secrets, 'scan config applied');
+    assert.deepEqual(merged.builtins, { npm: ['acme-internal'] }, 'existing rc keys preserved on merge');
+    assert.deepEqual(merged.privateScopes, ['@acme'], 'existing rc arrays preserved on merge');
+
+    // Non-interactive init defaults to lean and still installs the hook
+    const tempInit1 = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-init-lean-'));
+    fs.mkdirSync(path.join(tempInit1, '.git'));
+    const init1 = spawnSync(process.execPath, [binPath, 'init'], { cwd: tempInit1, encoding: 'utf-8' });
+    assert.equal(init1.status, 0, 'non-interactive init must exit 0');
+    const rc1 = JSON.parse(fs.readFileSync(path.join(tempInit1, '.slopdepsrc.json'), 'utf-8'));
+    assert.equal(rc1.profile, 'lean', 'non-interactive init must default to lean profile');
+    assert.ok(fs.existsSync(path.join(tempInit1, '.git', 'hooks', 'pre-commit')), 'pre-commit hook still installed');
+    assert.ok(fs.existsSync(path.join(tempInit1, 'SYSTEM.md')), 'SYSTEM.md still initialized');
+    fs.rmSync(tempInit1, { recursive: true, force: true });
+
+    // --profile=full writes the full sentinel suite
+    const tempInit2 = fs.mkdtempSync(path.join(os.tmpdir(), 'slop-init-full-'));
+    fs.mkdirSync(path.join(tempInit2, '.git'));
+    const init2 = spawnSync(process.execPath, [binPath, 'init', '--profile=full'], { cwd: tempInit2, encoding: 'utf-8' });
+    assert.equal(init2.status, 0, 'init --profile=full must exit 0');
+    const rc2 = JSON.parse(fs.readFileSync(path.join(tempInit2, '.slopdepsrc.json'), 'utf-8'));
+    assert.equal(rc2.profile, 'full', 'flag-selected profile persisted');
+    assert.ok(rc2.scan.codeSlop && rc2.scan.secrets, 'full profile enables sentinel modules');
+
+    // Re-init merges into an existing rc without destroying user keys
+    fs.writeFileSync(path.join(tempInit2, '.slopdepsrc.json'), JSON.stringify({ builtins: { npm: ['acme-internal'] } }));
+    const init3 = spawnSync(process.execPath, [binPath, 'init', '--profile=lean'], { cwd: tempInit2, encoding: 'utf-8' });
+    assert.equal(init3.status, 0, 're-init must exit 0');
+    const rc3 = JSON.parse(fs.readFileSync(path.join(tempInit2, '.slopdepsrc.json'), 'utf-8'));
+    assert.deepEqual(rc3.builtins, { npm: ['acme-internal'] }, 're-init must preserve existing rc keys');
+    assert.equal(rc3.profile, 'lean', 're-init updates the profile');
+    fs.rmSync(tempInit2, { recursive: true, force: true });
+  }
+  console.log('  ✔ PASS: profiles resolve correctly and init wizard persists/merges .slopdepsrc.json safely\n');
+
+  console.log('🎉 All 103 test assertions passed successfully!');
 }
 
 run().catch((err) => {

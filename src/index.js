@@ -11,6 +11,8 @@ import { checkPyPiPackage } from './registries/pypi.js';
 import { checkRustPackage } from './registries/rust.js';
 import { checkMavenPackage } from './registries/maven.js';
 import { extractGradleDependencies, extractLibsVersionsToml, extractPomXml, extractKotlinScriptDependsOn } from './extractors/kotlin.js';
+import { extractCodeSlop } from './extractors/code-slop.js';
+import { scanSecrets } from './extractors/secrets.js';
 import { cacheGet, cacheFlush } from './registries/cache.js';
 import { addPopularEntries, isPopularPackage } from './typosquat.js';
 import { extendImportMap } from './pypi-map.js';
@@ -29,6 +31,8 @@ const IGNORED_DIRS = new Set([
 ]);
 
 const SUPPORTED_EXTS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.pyi', '.rs', '.kt', '.kts', '.gradle']);
+const CODE_SLOP_JS_EXTS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.rs', '.kt', '.kts', '.gradle']);
+const CODE_SLOP_PY_EXTS = new Set(['.py', '.pyi']);
 const SUPPORTED_MANIFESTS = new Set([
   'package.json', 'requirements.txt', 'pyproject.toml', 'setup.cfg',
   'pipfile', 'setup.py', 'cargo.toml', 'constraints.txt',
@@ -60,7 +64,7 @@ async function mapConcurrent(items, limit, fn) {
   return results;
 }
 
-async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir = dir, errors = []) {
+async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir = dir, errors = [], includeEnvFiles = false) {
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
@@ -71,7 +75,7 @@ async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir 
 
   for (const entry of entries) {
     const lowerName = entry.name.toLowerCase();
-    if (IGNORED_DIRS.has(lowerName)) continue;
+    if (entry.isDirectory() && IGNORED_DIRS.has(lowerName)) continue;
     const fullPath = path.join(dir, entry.name);
 
     try {
@@ -85,9 +89,9 @@ async function getFilesRecursively(dir, fileList = [], dirNames = null, rootDir 
             dirNames.add(lowerName);
           }
         }
-        await getFilesRecursively(fullPath, fileList, dirNames, rootDir, errors);
+        await getFilesRecursively(fullPath, fileList, dirNames, rootDir, errors, includeEnvFiles);
       } else if (entry.isFile()) {
-        if (isSupportedFile(entry.name)) {
+        if (isSupportedFile(entry.name) || (includeEnvFiles && lowerName.startsWith('.env'))) {
           fileList.push(fullPath);
         }
       }
@@ -147,6 +151,21 @@ async function loadRcConfig(targetDir) {
     if (rc.popular?.pypi) addPopularEntries('pypi', rc.popular.pypi);
     if (rc.map) extendImportMap(rc.map);
     return rc;
+  } catch {
+    return null;
+  }
+}
+
+// Sentinel profile loader, separate from loadRcConfig: the scan toggles saved
+// by `slop-deps init` in the user's own repo are trusted for additive, purely
+// local scanning (code slop / secrets). The dependencies toggle stays behind
+// allowConfig/--trust-config, since turning it off can hide hallucinations.
+async function loadSentinelProfile(targetDir) {
+  try {
+    const raw = await fs.readFile(path.join(targetDir, '.slopdepsrc.json'), 'utf-8');
+    const rc = JSON.parse(raw);
+    if (!rc?.scan) return null;
+    return { scan: { codeSlop: rc.scan.codeSlop === true, secrets: rc.scan.secrets === true } };
   } catch {
     return null;
   }
@@ -217,12 +236,20 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   const stagedFilter = options.stagedFiles || null;
 
   const rc = options.allowConfig !== false ? await loadRcConfig(targetDir) : null;
+  const sentinelRc = rc ?? (options.loadSentinelProfile === true ? await loadSentinelProfile(targetDir) : null);
   const privateScopes = await loadPrivateScopes(targetDir, rc);
+
+  // Sentinel modules (code slop / secrets) are opt-in via the profile saved by
+  // `slop-deps init` in .slopdepsrc.json. Default remains dependencies-only.
+  const sentinelScan = (sentinelRc?.scan && (sentinelRc.scan.codeSlop === true || sentinelRc.scan.secrets === true))
+    ? { codeSlop: sentinelRc.scan.codeSlop === true, secrets: sentinelRc.scan.secrets === true }
+    : null;
+  const scanDeps = rc?.scan?.dependencies !== false;
 
   const dirNames = new Set();
   const traversalErrors = [];
   const scanWarnings = [];
-  const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir, traversalErrors);
+  const allFiles = await getFilesRecursively(targetDir, [], dirNames, targetDir, traversalErrors, sentinelScan?.secrets === true);
   const pathAliases = await loadPathAliases(targetDir);
 
   for (const file of allFiles) {
@@ -259,6 +286,7 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
   };
 
   for (const file of allFiles) {
+    if (!scanDeps) continue;
     const ext = path.extname(file).toLowerCase();
     const basename = path.basename(file).toLowerCase();
     const isStaged = !stagedFilter || stagedFilter.has(file.replace(/\\/g, '/'));
@@ -449,6 +477,23 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
     }
   }
 
+  // Sentinel pass: code-slop and secret scanning (profile-gated, purely local).
+  const sentinelFindings = [];
+  if (sentinelScan) {
+    for (const file of allFiles) {
+      const isStaged = !stagedFilter || stagedFilter.has(file.replace(/\\/g, '/'));
+      if (!isStaged) continue;
+      const ext = path.extname(file).toLowerCase();
+      const isSlopTarget = sentinelScan.codeSlop && (CODE_SLOP_JS_EXTS.has(ext) || CODE_SLOP_PY_EXTS.has(ext));
+      if (!isSlopTarget && !sentinelScan.secrets) continue;
+      const rel = path.relative(targetDir, file);
+      const content = await safeReadFile(file);
+      if (content === null) continue;
+      if (sentinelScan.secrets) sentinelFindings.push(...scanSecrets(content, rel));
+      if (isSlopTarget) sentinelFindings.push(...extractCodeSlop(content, rel));
+    }
+  }
+
   // Filter builtins/local modules and group by package key (ecosystem:name)
   const uniqueTargets = new Map();
   for (const ref of packageReferences) {
@@ -594,7 +639,7 @@ export async function scanDirectory(targetDir = process.cwd(), options = {}) {
         };
       });
 
-  findings.push(...scanWarnings);
+  findings.push(...scanWarnings, ...sentinelFindings);
 
   if (!options.offline) {
     await cacheFlush();
