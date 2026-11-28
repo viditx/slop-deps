@@ -3,7 +3,7 @@ import { BookOpen, Terminal } from 'lucide-react';
 import { CatState, PixelSittingCat } from './PixelSittingCat';
 
 const GITHUB_REPO_URL = 'https://github.com/viditx/slop-deps';
-const VERSION = 'v0.0.2';
+const VERSION = 'v0.0.5';
 
 type Tab = 'overview' | 'threats' | 'security' | 'story';
 
@@ -195,7 +195,7 @@ export function ReadmeSection() {
             {/* Micro spec tokens + Feedback link */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#F5F5F0]/10">
               <div className="flex flex-wrap items-center gap-1.5 font-terminal text-[11px] text-[#F5F5F0]/60">
-                <span className="text-[#F5F5F0]/85 font-medium">npm · PyPI · crates.io</span>
+                <span className="text-[#F5F5F0]/85 font-medium">npm · PyPI · crates.io · Maven/Gradle</span>
                 <span className="text-[#F5F5F0]/60">/</span>
                 <span>zero dependencies</span>
                 <span className="text-[#F5F5F0]/60">/</span>
@@ -259,7 +259,7 @@ export function ReadmeSection() {
                   Red-Teamed Architecture
                 </span>
                 <span className="font-terminal text-xs text-emerald-400 font-bold">
-                  79/79 Tests Green
+                  103/103 Tests Green
                 </span>
               </div>
               <p className="font-terminal text-[11px] text-[#F5F5F0]/75 leading-snug">
