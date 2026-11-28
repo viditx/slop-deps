@@ -8,61 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.5] - 2026-11-28
 
 ### Added
-- **Code Slop Extractor (`src/extractors/code-slop.js`)**:
-  - Fast single-pass lexer + regex detection of AI placeholders committed to source: `// TODO`, `// ...rest of code`, `pass  # TODO`, `raise NotImplementedError`, and `debugger;`.
-  - String literals, URLs, template text, and docstrings are lexed out, so TODO markers in prose never produce false positives. Works across JS/TS/JSX/TSX, Rust, Kotlin/Gradle (C-style comments) and Python (triple-quote aware).
-- **Secrets Scanner (`src/extractors/secrets.js`)**:
-  - Zero-dependency leaked-credential scanner for OpenAI (`sk-`/`sk-proj-`), Anthropic (`sk-ant-`), GitHub classic & fine-grained PATs (`ghp_`, `github_pat_`), AWS access key IDs (`AKIA`/`ASIA`), AWS secret access keys, and Stripe secret keys (`sk_live_`/`sk_test_`).
-  - Generic high-entropy credential catch via Shannon entropy with placeholder filtering (`your-key-here`, AWS docs examples, `xxx` filler, low-entropy junk all rejected).
-  - Findings carry a 4-char masked preview only — raw secrets never leave the scanner or appear in JSON/SARIF/terminal output. Leaks are CRITICAL (exit 1, exit 2 under `--strict`).
-- **Interactive `init` Setup Wizard**:
-  - `slopdeps init` now asks the user to choose a scanning profile via `node:readline/promises`: `[1] Lean & Fast` (dependencies only), `[2] Full Sentinel Suite` (dependencies + code slop + secrets), `[3] Custom Config` (per-module toggles).
-  - Profile persists to `.slopdepsrc.json` (`profile` + `scan` keys), merging safely into existing rc files (builtins, popular, map, privateScopes all preserved).
-  - Non-interactive/CI sessions default to `lean`; `--profile lean|full|custom` overrides for scripting. Custom profiles can disable dependency scanning for secrets-only audits.
-- **SARIF Rules SD004/SD005**:
-  - `codeSlop` (note) and `leakedSecret` (error) rules mapped for GitHub Code Scanning.
-- **Expanded Test Suite**:
-  - Tests 100–103 validating code slop extraction (line-accurate, string-safe), secret detection across all providers with redaction guarantees, profile-gated sentinel integration via `scanDirectory` (full/lean/custom/`allowConfig:false`), and init wizard profile persistence with rc merge. Adversarial fuzz corpus now covers both new extractors (103/103 tests pass).
+- Code slop lexer (`src/extractors/code-slop.js`): extracts comments from JS/TS, Python, Rust, and Kotlin while stripping string literals and docstrings first. Flags `// TODO`, `// ...rest of code`, `pass # TODO`, `raise NotImplementedError`, and `debugger;` on their actual lines. Stubs like `pass # TODO` report once rather than double-firing.
+- Secret scanner (`src/extractors/secrets.js`): detects active credentials for OpenAI (`sk-`), Anthropic (`sk-ant-`), GitHub PATs (`ghp_`), AWS access/secret keys, and Stripe (`sk_live_`). Shannon entropy checks generic tokens with placeholder filtering (`your-key-here`, AWS doc samples). Keys are masked to 4 characters; raw credentials are never printed or saved. Leaks exit 1 (or 2 under `--strict`).
+- Setup wizard (`slopdeps init`): interactive readline prompt for Lean (deps only), Full (deps + slop + secrets), or Custom profiles. Persists to `.slopdepsrc.json` without overriding custom maps or scopes. Non-interactive environments default to Lean.
+- SARIF export maps SD004 for code slop notes and SD005 for secret errors.
+
+### Fixed
+- Directories named `.env` in Python venvs no longer prevent `.env` file scanning.
+- User-defined slop and secret profiles apply during CLI runs without requiring `--trust-config`.
 
 ### Changed
 - Bumped version string to `0.0.5` across CLI banner, `--version`, SARIF driver, and registry User-Agents.
+- Test suite expanded to 103 tests (103/103 pass).
 
 ## [0.0.4] - 2026-11-27
 
 ### Added
-- **AI Agent `SYSTEM.md` Instructions Auto-Sync**:
-  - Automatically writes or updates `SYSTEM.md` in the target repository whenever non-existent or hallucinated package imports are detected.
-  - Lists the exact blocked package names and injects mandatory rules instructing coding agents (Cursor, Claude Code, Copilot, Antigravity) to run `npx slop-deps check <pkg>` before installing.
-  - Seamlessly preserves existing user notes in `SYSTEM.md` using delimited comment boundaries (`<!-- SLOP-DEPS:AI-GUARD:START -->`).
-  - `slopdeps init` also initializes `SYSTEM.md` alongside `.git/hooks/pre-commit`.
-- **Prominent User Security Warning**:
-  - Displays a high-visibility terminal alert banner warning the developer never to run `npm install` or `pip install` while hallucinated dependencies exist.
-- **Expanded Test Suite**:
-  - Added Test 99 validating `SYSTEM.md` auto-updating, content preservation, and CLI warning output (99/99 tests pass).
+- AI agent instruction sync: when scans catch hallucinated packages, `slop-deps` writes or updates `SYSTEM.md` in the repo root with the blocked package names and instructions for agents (Cursor, Claude, Copilot) to verify packages via `npx slop-deps check <pkg>` before importing.
+- Content outside `<!-- SLOP-DEPS:AI-GUARD -->` delimiters in `SYSTEM.md` is preserved.
+- Terminal warning banner alerting developers not to run package install commands while unverified imports remain.
+- `slopdeps init` writes `SYSTEM.md` guardrails during hook setup.
+
+### Changed
+- Added Test 99 validating `SYSTEM.md` updates and preservation (99/99 pass).
 
 ## [0.0.3] - 2026-11-27
 
 ### Added
-- **Ad-hoc Package Verification (`check` subcommand)**:
-  - Instant pre-install verification CLI: `npx slop-deps check <package-name> [--npm | --pypi | --crates | --maven]`.
-  - Machine-readable `--json` output and exit codes (0: exists/clean, 1: hallucinated/typosquat) for agentic and tool pre-installation validation.
-- **Automated Git Pre-Commit Hook (`init` subcommand)**:
-  - 1-command zero-dependency git hook installer: `npx slop-deps init`.
-  - Configures `.git/hooks/pre-commit` to gate commits with `npx slop-deps --staged --strict`, preventing autonomous agents from silently committing hallucinated imports.
-- **Deno & Bun Manifest Support**:
-  - Full AST dependency extraction for `deno.json` and `deno.jsonc` manifests.
-  - Extracts and resolves `npm:` specifiers from top-level `imports` and path-specific `scopes`.
-  - Built-in support for single-line (`//`), multi-line (`/* */`) JSONC comments, and UTF-8 BOM headers.
-  - Auto-discovers local workspace packages and private organizational scopes from root Deno configurations.
-- **Anthropic Claude Sonnet 5.5 Support**:
-  - Upgraded default AI auto-repair model in `src/ai.js` to `claude-sonnet-5-5` for higher accuracy refactoring (Resolves #3).
-- **Deterministic AST vs Prompting Architecture FAQ**:
-  - Documented deterministic compiler-level security defense against AI hallucination drift (The Prologic Defense).
-- **GitHub Actions CI Automation**:
-  - Standard 3-line copy-paste CI workflow for pre-merge pipeline gates (`npx slop-deps --strict`).
+- `check` CLI subcommand: verifies individual packages against registry endpoints before installation (`npx slop-deps check <pkg>`). Exits 0 if found, 1 if missing or typosquatted. Supports `--npm`, `--pypi`, `--crates`, and `--maven`, plus `--json` output.
+- Pre-commit hook: `slopdeps init` sets up `.git/hooks/pre-commit` running `slop-deps --staged --strict`.
+- Deno and Bun manifest support (`deno.json`, `deno.jsonc`), parsing `npm:` specifiers from `imports` and `scopes`. Handles JSONC comments and UTF-8 BOMs.
+- Switched default AI fixer model in `src/ai.js` to `claude-sonnet-5-5`.
 
 ### Changed
-- Expanded automated regression suite to 98 passing tests.
+- Regression suite expanded to 98 passing tests.
 - Synchronized version string to `0.0.3` across all CLI banners, SARIF outputs, and registry HTTP User-Agents.
 
 ## [0.0.2] - 2026-11-20
